@@ -29,16 +29,55 @@ void dmpDataReady() {
 }
 
 void debugGyro() {
-    
+  Serial.print(-90);
+  Serial.print(" ");
+  Serial.print(90);
+  Serial.print(" ");
+  Serial.print(0);
+  Serial.print("\t");
+  Serial.print("Gyro:ypr\t");
+  Serial.print(ypr[0] * 180 / M_PI);
+  Serial.print("\t");
+  Serial.print(ypr[1] * 180 / M_PI);
+  Serial.print("\t");
+  Serial.println(ypr[2] * 180 / M_PI);
+}
+
+void debugAccel() {
+  Serial.print(-1800);
+  Serial.print(" ");
+  Serial.print(1800);
+  Serial.print(" ");
+  Serial.print("aworld\t");
+  Serial.print(aaWorld.x);
+  Serial.print("\t");
+  Serial.print(aaWorld.y);
+  Serial.print("\t");
+  Serial.println(aaWorld.z);
+}
+
+void debugBoth() {
+  Serial.print("Acel: X: ");
+  Serial.print(aaWorld.x);
+  Serial.print("\tY: ");
+  Serial.print(aaWorld.y);
+  Serial.print("\tZ: ");
+  Serial.print(aaWorld.z);
+  Serial.print("Gyro: Yaw: ");
+  Serial.print(ypr[0] * 180 / M_PI);
+  Serial.print("\tPch: ");
+  Serial.print(ypr[1] * 180 / M_PI);
+  Serial.print("\tRll: ");
+  Serial.println(ypr[2] * 180 / M_PI);
 }
 
 void setup() {
   // join I2C bus (I2Cdev library doesn't do this automatically)
   Wire.begin();
   Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
-//#elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-//  Fastwire::setup(400, true);
-//#endif
+  //#elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+  //  Fastwire::setup(400, true);
+  //#endif
 
   Serial.begin(115200);
   //while (!Serial); // wait for Leonardo enumeration, others continue immediately
@@ -111,10 +150,11 @@ void setup() {
 
 void loop() {
   // If programming failed, don't try to do anything
-  if (!dmpReady) return;
+  if (!dmpReady) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    return;
+  }
   if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
-
-    // display Euler angles in degrees
 
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetAccel(&aa, fifoBuffer);
@@ -122,21 +162,8 @@ void loop() {
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
     mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
     mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-    Serial.print(-90);
-    Serial.print(" ");
-    Serial.print(90);
-    Serial.print(" ");
-    Serial.print(0);
-    Serial.print("\t");
-    Serial.print("Gyro:ypr\t");
-    Serial.print(ypr[0] * 180 / M_PI);
-    Serial.print("\t");
-    Serial.print(ypr[1] * 180 / M_PI);
-    Serial.print("\t");
-    Serial.println(ypr[2] * 180 / M_PI);
 
-    // blink LED to indicate activity
-    blinkState = !blinkState;
-    digitalWrite(LED_BUILTIN, blinkState);
+    debugGyro();
+    digitalWrite(LED_BUILTIN, LOW);
   }
 }
