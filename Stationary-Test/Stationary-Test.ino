@@ -4,7 +4,7 @@
 
 MPU6050 mpu;
 
-#define INTERRUPT_PIN 15
+#define INTERRUPT_PIN 23
 bool blinkState = false;
 
 bool dmpReady = false;  // set true if DMP init was successful
@@ -59,11 +59,11 @@ void debugAccel() {
 void debugBoth() {
   Serial.print("Acel: X: ");
   Serial.print(aaWorld.x);
-  Serial.print("\tY: ");
+  Serial.print("\t\tY: ");
   Serial.print(aaWorld.y);
-  Serial.print("\tZ: ");
+  Serial.print("\t\tZ: ");
   Serial.print(aaWorld.z);
-  Serial.print("Gyro: Yaw: ");
+  Serial.print("\t\tGyro: Yaw: ");
   Serial.print(ypr[0] * 180 / M_PI);
   Serial.print("\tPch: ");
   Serial.print(ypr[1] * 180 / M_PI);
@@ -75,15 +75,8 @@ void setup() {
   // join I2C bus (I2Cdev library doesn't do this automatically)
   Wire.begin();
   Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
-  //#elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-  //  Fastwire::setup(400, true);
-  //#endif
-
   Serial.begin(115200);
-  //while (!Serial); // wait for Leonardo enumeration, others continue immediately
-
-
-
+  
   // initialize device
   Serial.println(F("Initializing I2C devices..."));
   mpu.initialize();
@@ -97,14 +90,6 @@ void setup() {
   Serial.println(F("Initializing DMP..."));
   devStatus = mpu.dmpInitialize();
 
-  /* Default offsets
-    // supply your own gyro offsets here, scaled for min sensitivity
-    mpu.setXGyroOffset(220);
-    mpu.setYGyroOffset(76);
-    mpu.setZGyroOffset(-85);
-    mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
-  */
-
   mpu.setXGyroOffset(10);
   mpu.setYGyroOffset(99);
   mpu.setZGyroOffset(-1);
@@ -114,8 +99,8 @@ void setup() {
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
     // Calibration Time: generate offsets and calibrate our MPU6050
-    mpu.CalibrateAccel(6);
-    mpu.CalibrateGyro(6);
+    //mpu.CalibrateAccel(6);
+    //mpu.CalibrateGyro(6);
     mpu.PrintActiveOffsets();
     // turn on the DMP, now that it's ready
     Serial.println(F("Enabling DMP..."));
@@ -149,6 +134,7 @@ void setup() {
 }
 
 void loop() {
+  //while(1){}
   // If programming failed, don't try to do anything
   if (!dmpReady) {
     digitalWrite(LED_BUILTIN, HIGH);
@@ -163,7 +149,7 @@ void loop() {
     mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
     mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
 
-    debugGyro();
+    debugBoth();
     digitalWrite(LED_BUILTIN, LOW);
   }
 }
