@@ -90,10 +90,13 @@ void setup() {
   Serial.println(F("Initializing DMP..."));
   devStatus = mpu.dmpInitialize();
 
-  mpu.setXGyroOffset(10);
-  mpu.setYGyroOffset(99);
-  mpu.setZGyroOffset(-1);
-  mpu.setZAccelOffset(837); // 1688 factory default for my test chip
+  mpu.setXGyroOffset(127);
+  mpu.setYGyroOffset(-101);
+  mpu.setZGyroOffset(15);
+  mpu.setXAccelOffset(-409); 
+  mpu.setYAccelOffset(409); 
+  mpu.setZAccelOffset(1331); 
+
 
 
   // make sure it worked (returns 0 if so)
