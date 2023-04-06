@@ -13,7 +13,7 @@
 #define potPin 36
 
 #define pwmHz 1000 // PWM frequency of 1 KHz
-#define pwmRes 8 // 8-bit resolution, 256 possible values
+#define pwmRes 8 // 8-bit resolution
 
 class Motor {
   private:
