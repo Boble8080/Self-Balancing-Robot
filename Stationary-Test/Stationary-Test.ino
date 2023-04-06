@@ -4,8 +4,7 @@
 
 MPU6050 mpu;
 
-#define INTERRUPT_PIN 23
-bool blinkState = false;
+const byte MpuInterruptPin = 23;
 
 bool dmpReady = false;  // set true if DMP init was successful
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
@@ -80,7 +79,7 @@ void setup() {
   // initialize device
   Serial.println(F("Initializing I2C devices..."));
   mpu.initialize();
-  pinMode(INTERRUPT_PIN, INPUT);
+  pinMode(MpuInterruptPin, INPUT);
 
   // verify connection
   Serial.println(F("Testing device connections..."));
@@ -111,9 +110,9 @@ void setup() {
 
     // enable Arduino interrupt detection
     Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
-    Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
+    Serial.print(digitalPinToInterrupt(MpuInterruptPin));
     Serial.println(F(")..."));
-    attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+    attachInterrupt(digitalPinToInterrupt(MpuInterruptPin), dmpDataReady, RISING);
     mpuIntStatus = mpu.getIntStatus();
 
     // set our DMP Ready flag so the main loop() function knows it's okay to use it
