@@ -1,3 +1,4 @@
+#include <arduino.h>
 // Left motor pins
 #define Lmotor1 19
 #define Lmotor2 18
@@ -16,13 +17,14 @@
 #define pwmRes 8 // 8-bit resolution
 byte test = 0;
 
-class Motor {
-  private:
+class Motor 
+{
+  public:
     byte Pin1;
     byte Pin2;
     byte PinPWM;
     byte PWMchannel;
-  public:
+    
     Motor(byte Pin1, byte Pin2,byte pinPWM, byte PWMchannel)
     {
         // Stores constructor input as private variables
@@ -60,8 +62,54 @@ class Motor {
         Serial.println("back");
       }
     }
-    
 };
+
+    volatile uint64_t StartValue = 0;                 // First interrupt value
+    volatile uint64_t PeriodCount;                    // period in counts 
+    float             Freq;                           // frequency
+    float             RPM;
+    hw_timer_t * timer = NULL;  
+
+void IRAM_ATTR handleInterrupt()
+  {
+    uint64_t TempVal = timerRead(timer);            // value of timer at interrupt
+    PeriodCount = TempVal - StartValue;             // period count between rising edges
+    StartValue = TempVal;                           // puts latest reading as start for next calculation
+  }
+
+// class Encoder 
+// {
+//   private:
+    
+
+//   public:
+//     byte interruptPin;
+    
+  
+  
+//   float freq()
+//   {
+//     Freq = 40000000.00 / PeriodCount;
+//     return Freq;
+//   }
+//   float rpm()
+//   {
+//     Freq = 40000000.00 / PeriodCount;// calculate frequency 
+//     RPM = (Freq*6.0)/49.0;
+//     return RPM;
+//   }
+//   Encoder(byte pin, handleInterrupt())
+//   {
+//     this->interruptPin = pin;
+//     pinMode(interruptPin, INPUT);
+//     attachInterrupt(interruptPin, handleInterrupt, FALLING);            // attaches pin to interrupt on Falling Edge
+//     timer = timerBegin(0, 2, true);                                     // configure timer 
+//     // 0 = first timer
+//     // 2 is prescaler so 80 MHZ divided by 2 = 40 MHZ signal
+//     // true - counts up
+//     timerStart(timer);
+//   }
+// };
 
 Motor leftMotor(Lmotor1, Lmotor2, LmotorEn, LpwmChannel);
 Motor rightMotor(Rmotor1, Rmotor2, RmotorEn, RpwmChannel);
