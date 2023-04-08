@@ -14,6 +14,7 @@
 
 #define pwmHz 1000 // PWM frequency of 1 KHz
 #define pwmRes 8 // 8-bit resolution
+byte test = 0;
 
 class Motor {
   private:
@@ -24,6 +25,11 @@ class Motor {
   public:
     Motor(byte Pin1, byte Pin2,byte pinPWM, byte PWMchannel)
     {
+        // Stores constructor input as private variables
+        this->Pin1 = Pin1;
+        this->Pin2 = Pin2;
+        this->PinPWM = PinPWM;
+        this->PWMchannel = PWMchannel;
         ledcSetup(PWMchannel, pwmHz, pwmRes);
         ledcAttachPin(pinPWM, PWMchannel);
         pinMode(Pin1, OUTPUT);
@@ -31,25 +37,30 @@ class Motor {
     }
     void rotate(int speed)
     {
+      Serial.println(speed);
       if (speed == 0)
       {
         digitalWrite(Pin1, 0);
         digitalWrite(Pin2, 0);
         ledcWrite(PWMchannel, 0);
+        Serial.println("stop");
       }
       else if (speed > 0)
       {
         digitalWrite(Pin1, 1);
         digitalWrite(Pin2, 0);
         ledcWrite(PWMchannel, speed);
+        Serial.println("forward");
       }
       else if (speed < 0)
       {
         digitalWrite(Pin1, 0);
         digitalWrite(Pin2, 1);
         ledcWrite(PWMchannel, 257 - speed);
+        Serial.println("back");
       }
     }
+    
 };
 
 Motor leftMotor(Lmotor1, Lmotor2, LmotorEn, LpwmChannel);
@@ -67,13 +78,10 @@ int val = 0;
 void loop()
 {
   val = analogRead(potPin) / 2;
-  Serial.println(val);
   rightMotor.rotate(val);
   leftMotor.rotate(val);
-  Serial.println("forward");
   delay(1000);
   rightMotor.rotate(-val);
   leftMotor.rotate(-val);
-  Serial.println("backwards");
   delay(1000);
 }
