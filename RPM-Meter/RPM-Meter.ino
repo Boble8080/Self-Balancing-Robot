@@ -9,7 +9,8 @@
 */
 
 const byte        interruptPin = 36;              // Assign the interrupt pin
-
+const byte          LeftEncoderInterrupt = 36;
+const byte          RightEncoderInterrupt = 39;
 volatile uint64_t StartValue = 0;                 // First interrupt value
 volatile uint64_t PeriodCount;                    // period in counts 
 float             Freq;                           // frequency
