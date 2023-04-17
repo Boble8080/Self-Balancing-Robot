@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "POLOLU")(type "KiCad")(uri "${KICAD7_3RD_PARTY}/POLOLU-713/POLOLU.pretty")(options "")(descr ""))
+)
