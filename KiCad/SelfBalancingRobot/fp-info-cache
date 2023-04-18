@@ -1,4 +1,18 @@
-21605088125871621
+21611815907335512
+0_Footprints
+BatteryConnector
+
+
+0
+2
+2
+0_Footprints
+CurrentMeter
+
+
+0
+7
+3
 0_Footprints
 GY-521
 
@@ -13,6 +27,20 @@ MODULE_ESP32_NODEMCU
 0
 38
 38
+0_Footprints
+MPU-6050
+
+
+0
+10
+8
+0_Footprints
+MPU-6050-External
+
+
+0
+8
+8
 0_Footprints
 SHIELD_POLOLU-713
 
