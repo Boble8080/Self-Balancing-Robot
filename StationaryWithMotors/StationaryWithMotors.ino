@@ -22,8 +22,9 @@
 #define Rencoder 39
 
 #define potPin 34
+#define currentMeter 35
 
-#define pwmHz 1000  // PWM frequency of 1 KHz // test others
+#define pwmHz 20  // PWM frequency of 1 KHz // test others
 #define pwmRes 8    // 8-bit resolution
 
 //////////////////////////////////////////////
@@ -164,6 +165,7 @@ class Motor {
     byte PinPWM;
     byte PWMchannel;
 
+<<<<<<< Updated upstream
     Motor(byte inPin1, byte inPin2, byte inPinPWM, byte inPWMchannel) {
       // Stores constructor input as private variables
       Pin1 = inPin1;
@@ -197,11 +199,55 @@ class Motor {
         //Serial.print("\t");
         //Serial.print(abs(speed) + motorGain);
       }
+=======
+  Motor(byte Pin1, byte Pin2, byte pinPWM, byte PWMchannel) {
+    // Stores constructor input as private variables
+    this->Pin1 = Pin1;
+    this->Pin2 = Pin2;
+    this->PinPWM = PinPWM;
+    this->PWMchannel = PWMchannel;
+    ledcSetup(PWMchannel, pwmHz, pwmRes);
+    ledcAttachPin(pinPWM, PWMchannel);
+    pinMode(Pin1, OUTPUT);
+    pinMode(Pin2, OUTPUT);
+  }
+  void rotate(int speed) { //256 max
+    //motorGain = 20;
+    //Serial.println(speed);
+    if (speed == 0) {
+      digitalWrite(Pin1, 0);
+      digitalWrite(Pin2, 0);
+      ledcWrite(PWMchannel, 0);
+      //Serial.print("\t");
+      //Serial.print(abs(speed));
+    } else if (speed > 0) {
+      digitalWrite(Pin1, 1);
+      digitalWrite(Pin2, 0);
+      ledcWrite(PWMchannel, speed + motorGain);
+      //Serial.print("\t");
+      //Serial.print(speed + motorGain);
+    } else if (speed < 0) {
+      digitalWrite(Pin1, 0);
+      digitalWrite(Pin2, 1);
+      ledcWrite(PWMchannel, abs(speed) + motorGain);
+      //Serial.print("\t");
+      //Serial.print(abs(speed) + motorGain);
+>>>>>>> Stashed changes
     }
 };
 
 Motor leftMotor(Lmotor1, Lmotor2, LmotorEn, LpwmChannel);
 Motor rightMotor(Rmotor1, Rmotor2, RmotorEn, RpwmChannel);
+
+float measureCurrent()
+{
+  float reading = analogRead(currentMeter);
+  Serial.print("\t");
+  Serial.print(reading-230.0);
+  Serial.print(" ");
+  return reading;
+  
+}
 
 /////////////////////////////////////////////////////////////////////////
 //                          Encoder                                    //
@@ -342,17 +388,21 @@ void readMPU() {
 //                          Setup & Loop                               //
 /////////////////////////////////////////////////////////////////////////
 
-double Setpoint = -5;
+double Setpoint = 0;
 double Input, Output;
-double Kp = 5.7, Ki = 0.1, Kd = 0.2;
+double Kp = 7.6, Ki = 118.00, Kd = 0.15;
 
 
 PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
 
 
 void setup() {
+<<<<<<< Updated upstream
   RemoteXY_Init(); 
   motorGain = 18;
+=======
+  motorGain = 0;
+>>>>>>> Stashed changes
   Wire.begin();
   Wire.setClock(400000);  // 400kHz I2C clock. Comment this line if having compilation difficulties
   Serial.begin(115200);
@@ -361,12 +411,12 @@ void setup() {
   Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
   devStatus = mpu.dmpInitialize();
-  mpu.setXGyroOffset(127);
-  mpu.setYGyroOffset(-101);
-  mpu.setZGyroOffset(15);
-  mpu.setXAccelOffset(-409);
-  mpu.setYAccelOffset(409);
-  mpu.setZAccelOffset(1331);
+  mpu.setXGyroOffset(148);
+  mpu.setYGyroOffset(-102);
+  mpu.setZGyroOffset(4);
+  mpu.setXAccelOffset(-539);
+  mpu.setYAccelOffset(369);
+  mpu.setZAccelOffset(1386);
 
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
@@ -400,6 +450,7 @@ void setup() {
 
   // configure LED for output
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
 
   pinMode(Lencoder, INPUT);
   attachInterrupt(Lencoder, handleLeftInterrupt, FALLING);
@@ -413,29 +464,61 @@ void setup() {
 
   analogReadResolution(9);
 
+<<<<<<< Updated upstream
   balancePID.SetMode(1);
+=======
+  balancePID.SetMode(AUTOMATIC);
+  balancePID.SetOutputLimits(motorGain-256, 256-motorGain);
+  balancePID.SetSampleTime(4);
+>>>>>>> Stashed changes
 }
 
 
 void loop() {
+<<<<<<< Updated upstream
   //RemoteXY_Handler();
   // Kd = analogRead(potPin)/100.0;
   // Serial.print(Kd);
   // Serial.print("\t");
   // balancePID.SetTunings(Kp, Ki, Kd);
+=======
+  Ki = analogRead(potPin)/1.0;
+  Serial.print(Ki);
+  Serial.print("\t");
+  balancePID.SetTunings(Kp, Ki, Kd);
+>>>>>>> Stashed changes
   readMPU();
   Input = -ypr[1] * 180 / M_PI;
-  if (Input >= 50 || Input <= -50) {
+
+  //|| measureCurrent() >= 15.0
+  if (Input >= 50 || Input <= -50 || measureCurrent() <= -30.0) 
+  {
     while (1) {
       leftMotor.rotate(0);
       rightMotor.rotate(0);
+<<<<<<< Updated upstream
 
+=======
+      Serial.println(analogRead(potPin)/1.0);
+      digitalWrite(LED_BUILTIN, HIGH);
+      measureCurrent();
+      delay(100);
+>>>>>>> Stashed changes
     }
+  }
+  if (Input <= 0.1 && Input >= -0.1)
+  {
+    //balancePID.outputSum = balancePID.outputSum/2;
+    digitalWrite(LED_BUILTIN, HIGH);
+    Serial.println("RESET/////////////////////////////////////////////////////////////////////////");
   }
   balancePID.Compute();
   debugGyro();
   Serial.print("\t");
-  Serial.println(Output);
+  Serial.print(Output);
   leftMotor.rotate(Output);
   rightMotor.rotate(Output);
+  measureCurrent();
+  Serial.println();
+  digitalWrite(LED_BUILTIN, 0);
 }
