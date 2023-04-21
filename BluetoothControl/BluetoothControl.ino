@@ -23,49 +23,10 @@
 
 #define potPin 34
 #define currentMeter 35
+#define MotorENABLE 27
 
 #define pwmHz 20  // PWM frequency of 1 KHz // test others
 #define pwmRes 8    // 8-bit resolution
-
-//////////////////////////////////////////////
-//        RemoteXY include library          //
-//////////////////////////////////////////////
-
-// RemoteXY select connection mode and include library
-#define REMOTEXY_MODE__ESP32CORE_BLE
-#include <BLEDevice.h>
-
-#include <RemoteXY.h>
-
-// RemoteXY connection settings
-#define REMOTEXY_BLUETOOTH_NAME "SelfBalancingRobot"
-
-
-// RemoteXY configurate
-#pragma pack(push, 1)
-uint8_t RemoteXY_CONF[] =   // 72 bytes
-{ 255, 2, 0, 15, 0, 65, 0, 16, 170, 2, 5, 0, 66, 30, 30, 30, 17, 62, 30, 30,
-  2, 26, 31, 71, 56, 70, 4, 25, 25, 5, 1, 54, 54, 0, 2, 24, 75, 0, 0, 180,
-  194, 0, 0, 180, 66, 0, 0, 240, 65, 0, 0, 32, 65, 0, 0, 160, 64, 24, 0, 67,
-  4, 12, 47, 20, 5, 2, 39, 60, 8, 2, 26, 11
-};
-
-// this structure defines all the variables and events of your control interface
-struct {
-
-  // input variables
-  int8_t joystick_x; // from -100 to 100
-  int8_t joystick_y; // from -100 to 100
-
-  // output variables
-  float Angle;  // from -90 to 90
-  char textBox[11];  // string UTF8 end zero
-
-  // other variable
-  uint8_t connect_flag;  // =1 if wire connected, else =0
-
-} RemoteXY;
-#pragma pack(pop)
 
 /////////////////////////////////////////////////////////////////////////
 //                              PID                                    //
@@ -82,10 +43,10 @@ class PID
     double *myOutput;             //   This creates a hard link between the variables and the
     double *mySetpoint;           //   PID, freeing the user from having to constantly tell us
 
-    unsigned long lastTime;
+    uint32_t lastTime;
     double outputSum, lastInput;
 
-    unsigned long SampleTime = 4;
+    uint32_t SampleTime = 4;
     double outMin = -255;
     double outMax =  255;
     bool inAuto;
@@ -101,7 +62,7 @@ class PID
       lastTime = millis() - SampleTime;
     }
 
-    void SetMode(int Mode)
+    void enable(int Mode)
     {
       bool newAuto = (Mode == 1);
       if (newAuto && !inAuto)
@@ -116,8 +77,8 @@ class PID
     bool Compute()
     {
       if (!inAuto) return false;
-      unsigned long now = millis();
-      unsigned long timeChange = (now - lastTime);
+      uint32_t now = millis();
+      uint32_t timeChange = (now - lastTime);
       if (timeChange >= SampleTime)
       {
         /*Compute all the working error variables*/
@@ -154,18 +115,29 @@ class PID
       ki = Ki * SampleTimeInSec;
       kd = Kd / SampleTimeInSec;
     }
+    void SetOutputLimits(double Min, double Max)
+    {
+      outMin = Min;
+      outMax = Max;
+    }
 };
+
+double Setpoint = 0;
+double Input, Output;
+double Kp = 7.6, Ki = 118.00, Kd = 0.15;
+PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
+
 /////////////////////////////////////////////////////////////////////////
 //                               Motor                                 //
 /////////////////////////////////////////////////////////////////////////
-int motorGain;
+
 class Motor {
   public:
-    byte Pin1;
-    byte Pin2;
-    byte PinPWM;
-    byte PWMchannel;
-    Motor(byte inPin1, byte inPin2, byte inPinPWM, byte inPWMchannel) {
+    uint8_t Pin1;
+    uint8_t Pin2;
+    uint8_t PinPWM;
+    uint8_t PWMchannel;
+    Motor(uint8_t inPin1, uint8_t inPin2, uint8_t inPinPWM, uint8_t inPWMchannel) {
       // Stores constructor input as private variables
       Pin1 = inPin1;
       Pin2 = inPin2;
@@ -176,7 +148,8 @@ class Motor {
       pinMode(Pin1, OUTPUT);
       pinMode(Pin2, OUTPUT);
     }
-    void rotate(int speed) {
+    void rotate(int speed)
+    {
       //motorGain = 20;
       //Serial.println(speed);
       if (speed == 0) {
@@ -188,13 +161,13 @@ class Motor {
       } else if (speed > 0) {
         digitalWrite(Pin1, 1);
         digitalWrite(Pin2, 0);
-        ledcWrite(PWMchannel, speed + motorGain);
+        ledcWrite(PWMchannel, speed );
         //Serial.print("\t");
         //Serial.print(speed + motorGain);
       } else if (speed < 0) {
         digitalWrite(Pin1, 0);
         digitalWrite(Pin2, 1);
-        ledcWrite(PWMchannel, abs(speed) + motorGain);
+        ledcWrite(PWMchannel, abs(speed) );
         //Serial.print("\t");
         //Serial.print(abs(speed) + motorGain);
       }
@@ -214,35 +187,46 @@ float measureCurrent()
 
 }
 
+void motorEnable(bool enable)
+{
+  digitalWrite(MotorENABLE, enable);
+}
+
 /////////////////////////////////////////////////////////////////////////
 //                          Encoder                                    //
 /////////////////////////////////////////////////////////////////////////
 
-const byte LeftEncoderInterrupt = 36;  // Assign the interrupt pin
+const byte LeftEncoderInterrupt = Lencoder;  // Assign the interrupt pin
 volatile uint64_t LeftStartValue = 0;  // First interrupt value
 volatile uint64_t LeftPeriodCount;     // period in counts
 float LeftFreq;                        // frequency
 float LeftRPM;
+volatile int64_t  LeftSteps = 0;
 hw_timer_t* LeftTimer = NULL;  // pointer to a variable of type hw_timer_t
 
 
-const byte RightEncoderInterrupt = 39;  // Assign the interrupt pin
+const byte RightEncoderInterrupt = Rencoder;  // Assign the interrupt pin
 volatile uint64_t RightStartValue = 0;  // First interrupt value
 volatile uint64_t RightPeriodCount;     // period in counts
 float RightFreq;                        // frequency
 float RightRPM;
+volatile int64_t  RightSteps = 0;
 hw_timer_t* RightTimer = NULL;  // pointer to a variable of type hw_timer_t
 
 void IRAM_ATTR handleLeftInterrupt() {
   uint64_t TempVal = timerRead(LeftTimer);     // value of timer at interrupt
   LeftPeriodCount = TempVal - LeftStartValue;  // period count between rising edges
   LeftStartValue = TempVal;                    // puts latest reading as start for next calculation
+  if (Output > 0) LeftSteps++;
+  else LeftSteps--;
 }
 
 void IRAM_ATTR handleRightInterrupt() {
   uint64_t TempVal = timerRead(RightTimer);      // value of timer at interrupt
   RightPeriodCount = TempVal - RightStartValue;  // period count between rising edges
   RightStartValue = TempVal;                     // puts latest reading as start for next calculation
+  if (Output > 0) RightSteps++;
+  else RightSteps--;
 }
 
 float LeftFrequency() {
@@ -265,6 +249,61 @@ float returnRightRPM() {
   RightFreq = 40000000.00 / RightPeriodCount;  // calculate frequency
   RightRPM = (RightFreq * 6.0) / 49.0;
   return RightRPM;
+}
+
+uint16_t linearCalCutoff = 5000;
+float linearOffset = 0;
+void linearCalibration()
+{
+  // Left step count is bigger than the right
+  if (abs(LeftSteps) >= abs(RightSteps))
+  {
+    // and is above cuttoff
+    if (abs(LeftSteps) < linearCalCutoff)
+    {
+      return;
+    }
+    // and is positive
+    if (LeftSteps > 0)
+    {
+      // increase offset and reset Steps
+      linearOffset += 0.1;
+      LeftSteps -= RightSteps;
+      RightSteps = 0;
+    }
+    // or is negative
+    else
+    {
+      // decrease offset and reset Steps
+      linearOffset -= 0.1;
+      LeftSteps += RightSteps;
+      RightSteps = 0;
+    }
+  }
+  // Right step count is bigger than the Left
+  else
+  {
+    // and is above cuttoff
+    if (abs(RightSteps) < linearCalCutoff)
+    {
+      return;
+    }
+    // and is positive
+    if (RightSteps > 0)
+    {
+      // increase offset and reset Steps
+      linearOffset += 0.1;
+      RightSteps -= LeftSteps;
+      LeftSteps = 0;
+    }
+    else
+    {
+      // increase offset and reset Steps
+      linearOffset -= 0.1;
+      RightSteps += LeftSteps;
+      LeftSteps = 0;
+    }
+  }
 }
 
 
@@ -292,8 +331,18 @@ float euler[3];       // [psi, theta, phi]    Euler angle container
 float ypr[3];         // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 volatile bool mpuInterrupt = false;  // indicates whether MPU interrupt pin has gone high
-void dmpDataReady() {
+void dmpDataReady()
+{
   mpuInterrupt = true;
+}
+
+void debugAngle()
+{
+  Serial.print("Gyro: ");
+  Serial.print(ypr[1] * 180 / M_PI);
+  Serial.print("\t Accel:");
+  Serial.print(aaWorld.y);
+  Serial.print("\t ");
 }
 
 void debugGyro() {
@@ -334,7 +383,7 @@ void debugBoth() {
 }
 void readMPU() {
   if (!dmpReady) {
-    digitalWrite(LED_BUILTIN, HIGH);
+    LEDflash(2000);
     return;
   }
   if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
@@ -345,25 +394,91 @@ void readMPU() {
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
     mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
     mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
+
+    Input = -ypr[1] * 180 / M_PI;
     digitalWrite(LED_BUILTIN, LOW);
+    if (Input <= 0.1 && Input >= -0.1)
+    {
+      digitalWrite(LED_BUILTIN, HIGH);
+    }
   }
+}
+/////////////////////////////////////////////////////////////////////////
+//                               LED                                   //
+/////////////////////////////////////////////////////////////////////////
+
+bool LEDstate = 0;
+uint32_t LEDoldTime = 0;
+void LEDflash(uint16_t speed) // Led flash in ms
+{
+  if (millis() - LEDoldTime >= speed)
+  {
+    LEDoldTime = millis();
+    LEDstate = !LEDstate;
+  }
+  digitalWrite(LED_BUILTIN, LEDstate);
+}
+
+/////////////////////////////////////////////////////////////////////////
+//                              Remote Control                         //
+/////////////////////////////////////////////////////////////////////////
+
+// RemoteXY select connection mode and include library
+#define REMOTEXY_MODE__ESP32CORE_BLE
+#include <BLEDevice.h>
+
+#include <RemoteXY.h>
+
+// RemoteXY connection settings
+#define REMOTEXY_BLUETOOTH_NAME "SelfBalancingRobot"
+
+
+// RemoteXY configurate
+#pragma pack(push, 1)
+uint8_t RemoteXY_CONF[] =   // 72 bytes
+{ 255, 2, 0, 35, 0, 65, 0, 16, 170, 2, 5, 0, 66, 30, 30, 30, 17, 62, 30, 30,
+  2, 26, 31, 71, 56, 9, 32, 46, 46, 5, 1, 54, 54, 0, 2, 24, 75, 0, 0, 180,
+  194, 0, 0, 180, 66, 0, 0, 240, 65, 0, 0, 32, 65, 0, 0, 160, 64, 24, 0, 67,
+  4, 4, 3, 92, 6, 2, 39, 60, 8, 2, 26, 31
+};
+
+// this structure defines all the variables and events of your control interface
+struct {
+  // input variables
+  int8_t joystick_x; // from -100 to 100
+  int8_t joystick_y; // from -100 to 100
+
+  // output variables
+  float Angle;  // from -90 to 90
+  char textBox[31];  // string UTF8 end zero
+
+  // other variable
+  uint8_t connect_flag;  // =1 if wire connected, else =0
+
+} RemoteXY;
+#pragma pack(pop)
+
+int8_t remoteCtrlLeft = 0;
+int8_t remoteCtrlRight = 0;
+
+void remoteControl()
+{
+    
+    RemoteXY.Angle = Input;
+    
+    remoteCtrlLeft = (RemoteXY.joystick_y * 0.05)
+                    +(RemoteXY.joystick_x * 0.05);
+                   
+    remoteCtrlRight = (RemoteXY.joystick_y * 0.05)
+                     +(-RemoteXY.joystick_x * 0.05);
 }
 
 /////////////////////////////////////////////////////////////////////////
 //                          Setup & Loop                               //
 /////////////////////////////////////////////////////////////////////////
 
-double Setpoint = 0;
-double Input, Output;
-double Kp = 7.6, Ki = 118.00, Kd = 0.15;
-
-
-PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
-
-
 void setup() {
-  //RemoteXY_Init();
-  motorGain = 0;
+  RemoteXY_Init();
   Wire.begin();
   Wire.setClock(400000);  // 400kHz I2C clock. Comment this line if having compilation difficulties
   Serial.begin(115200);
@@ -413,6 +528,8 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
+
+
   pinMode(Lencoder, INPUT);
   attachInterrupt(Lencoder, handleLeftInterrupt, FALLING);
   LeftTimer = timerBegin(0, 2, true);
@@ -424,53 +541,49 @@ void setup() {
   timerStart(LeftTimer);
 
   analogReadResolution(9);
+  pinMode(MotorENABLE, OUTPUT);
 
-
-  balancePID.SetMode(1);
+  balancePID.enable(1);
   //balancePID.SetOutputLimits(motorGain-256, 256-motorGain);
-  //balancePID.SetSampleTime(4);
 
+  delay(1000);
+  while (Input >= 10 && Input <= 10)
+  {
+    readMPU();
+    motorEnable(0);
+    LEDflash(100);
+  }
+  motorEnable(1);
 }
 
 
 void loop() {
 
-  // RemoteXY_Handler();
-  // Kd = analogRead(potPin)/100.0;
-  // Serial.print(Kd);
-  // Serial.print("\t");
-  // balancePID.SetTunings(Kp, Ki, Kd);
-  Ki = analogRead(potPin) / 1.0;
-  Serial.print(Ki);
-  Serial.print("\t");
-  balancePID.SetTunings(Kp, Ki, Kd);
+  RemoteXY_Handler();
   readMPU();
-  Input = -ypr[1] * 180 / M_PI;
-
-  //|| measureCurrent() >= 15.0
+  while (RemoteXY.connect_flag = 0)
+  {
+    LEDflash(500);
+    motorEnable(0);
+  }
   if (Input >= 50 || Input <= -50 || measureCurrent() <= -30.0)
   {
     while (1) {
-      leftMotor.rotate(0);
-      rightMotor.rotate(0);
-      Serial.println(analogRead(potPin) / 1.0);
+      motorEnable(0);
       digitalWrite(LED_BUILTIN, HIGH);
       measureCurrent();
       delay(100);
     }
   }
-  if (Input <= 0.1 && Input >= -0.1)
-  {
-    //balancePID.outputSum = balancePID.outputSum/2;
-    digitalWrite(LED_BUILTIN, HIGH);
+  else motorEnable(1);
 
-  }
   balancePID.Compute();
-  debugGyro();
-  Serial.print("\t");
+  debugAngle();
+  linearCalibration();
+  Serial.print("\t Output: ");
   Serial.print(Output);
-  leftMotor.rotate(Output);
-  rightMotor.rotate(Output);
+  leftMotor.rotate(Output+linearOffset+remoteCtrlLeft);
+  rightMotor.rotate(Output+linearOffset+remoteCtrlRight);
   measureCurrent();
   Serial.println();
   digitalWrite(LED_BUILTIN, 0);
