@@ -252,9 +252,12 @@ float returnRightRPM() {
 }
 
 uint16_t linearCalCutoff = 5000;
+uint16_t angleCalCutoff = 500;
 float linearOffset = 0;
 void linearCalibration()
 {
+  // Linear Calibration
+  
   // Left step count is bigger than the right
   if (abs(LeftSteps) >= abs(RightSteps))
   {
@@ -304,6 +307,23 @@ void linearCalibration()
       LeftSteps = 0;
     }
   }
+
+// sign problem
+
+//  // Angular Calibration
+//  RightStepsDelta = RightSteps-LeftSteps
+//  if(RightStepsDelta > angularCalOffset)
+//  {
+//    leftAngleOffset += 0.1;
+//    RightSteps -= RightStepsDelta;
+//  }
+//  LeftStepsDelta = LeftSteps-RightSteps
+//  if(LeftStepsDelta > angularCalOffset)
+//  {
+//    rightAngleOffset += 0.1;
+//    LeftSteps -= LeftStepsDelta;
+//  }
+  
 }
 
 
