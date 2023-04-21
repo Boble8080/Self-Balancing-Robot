@@ -22,48 +22,49 @@
 #define Rencoder 39
 
 #define potPin 34
+#define currentMeter 35
 
-#define pwmHz 1000  // PWM frequency of 1 KHz // test others
+#define pwmHz 20  // PWM frequency of 1 KHz // test others
 #define pwmRes 8    // 8-bit resolution
 
-//////////////////////////////////////////////
-//        RemoteXY include library          //
-//////////////////////////////////////////////
+// //////////////////////////////////////////////
+// //        RemoteXY include library          //
+// //////////////////////////////////////////////
 
-// RemoteXY select connection mode and include library 
-#define REMOTEXY_MODE__ESP32CORE_BLE
-#include <BLEDevice.h>
+// // RemoteXY select connection mode and include library 
+// #define REMOTEXY_MODE__ESP32CORE_BLE
+// #include <BLEDevice.h>
 
-#include <RemoteXY.h>
+// #include <RemoteXY.h>
 
-// RemoteXY connection settings 
-#define REMOTEXY_BLUETOOTH_NAME "SelfBalancingRobot"
+// // RemoteXY connection settings 
+// #define REMOTEXY_BLUETOOTH_NAME "SelfBalancingRobot"
 
 
-// RemoteXY configurate  
-#pragma pack(push, 1)
-uint8_t RemoteXY_CONF[] =   // 72 bytes
-  { 255,2,0,15,0,65,0,16,170,2,5,0,66,30,30,30,17,62,30,30,
-  2,26,31,71,56,70,4,25,25,5,1,54,54,0,2,24,75,0,0,180,
-  194,0,0,180,66,0,0,240,65,0,0,32,65,0,0,160,64,24,0,67,
-  4,12,47,20,5,2,39,60,8,2,26,11 };
+// // RemoteXY configurate  
+// #pragma pack(push, 1)
+// uint8_t RemoteXY_CONF[] =   // 72 bytes
+//   { 255,2,0,15,0,65,0,16,170,2,5,0,66,30,30,30,17,62,30,30,
+//   2,26,31,71,56,70,4,25,25,5,1,54,54,0,2,24,75,0,0,180,
+//   194,0,0,180,66,0,0,240,65,0,0,32,65,0,0,160,64,24,0,67,
+//   4,12,47,20,5,2,39,60,8,2,26,11 };
   
-// this structure defines all the variables and events of your control interface 
-struct {
+// // this structure defines all the variables and events of your control interface 
+// struct {
 
-    // input variables
-  int8_t joystick_x; // from -100 to 100  
-  int8_t joystick_y; // from -100 to 100  
+//     // input variables
+//   int8_t joystick_x; // from -100 to 100  
+//   int8_t joystick_y; // from -100 to 100  
 
-    // output variables
-  float Angle;  // from -90 to 90 
-  char textBox[11];  // string UTF8 end zero 
+//     // output variables
+//   float Angle;  // from -90 to 90 
+//   char textBox[11];  // string UTF8 end zero 
 
-    // other variable
-  uint8_t connect_flag;  // =1 if wire connected, else =0 
+//     // other variable
+//   uint8_t connect_flag;  // =1 if wire connected, else =0 
 
-} RemoteXY;
-#pragma pack(pop)
+// } RemoteXY;
+// #pragma pack(pop)
 
 /////////////////////////////////////////////////////////////////////////
 //                              PID                                    //
@@ -163,7 +164,6 @@ class Motor {
     byte Pin2;
     byte PinPWM;
     byte PWMchannel;
-
     Motor(byte inPin1, byte inPin2, byte inPinPWM, byte inPWMchannel) {
       // Stores constructor input as private variables
       Pin1 = inPin1;
@@ -202,6 +202,16 @@ class Motor {
 
 Motor leftMotor(Lmotor1, Lmotor2, LmotorEn, LpwmChannel);
 Motor rightMotor(Rmotor1, Rmotor2, RmotorEn, RpwmChannel);
+
+float measureCurrent()
+{
+  float reading = analogRead(currentMeter);
+  Serial.print("\t");
+  Serial.print(reading-230.0);
+  Serial.print(" ");
+  return reading;
+  
+}
 
 /////////////////////////////////////////////////////////////////////////
 //                          Encoder                                    //
@@ -342,17 +352,17 @@ void readMPU() {
 //                          Setup & Loop                               //
 /////////////////////////////////////////////////////////////////////////
 
-double Setpoint = -5;
+double Setpoint = 0;
 double Input, Output;
-double Kp = 5.7, Ki = 0.1, Kd = 0.2;
+double Kp = 7.6, Ki = 118.00, Kd = 0.15;
 
 
 PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
 
 
 void setup() {
-  RemoteXY_Init(); 
-  motorGain = 18;
+  //RemoteXY_Init(); 
+  motorGain = 0;
   Wire.begin();
   Wire.setClock(400000);  // 400kHz I2C clock. Comment this line if having compilation difficulties
   Serial.begin(115200);
@@ -361,12 +371,12 @@ void setup() {
   Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
   devStatus = mpu.dmpInitialize();
-  mpu.setXGyroOffset(127);
-  mpu.setYGyroOffset(-101);
-  mpu.setZGyroOffset(15);
-  mpu.setXAccelOffset(-409);
-  mpu.setYAccelOffset(409);
-  mpu.setZAccelOffset(1331);
+  mpu.setXGyroOffset(148);
+  mpu.setYGyroOffset(-103);
+  mpu.setZGyroOffset(4);
+  mpu.setXAccelOffset(-539);
+  mpu.setYAccelOffset(369);
+  mpu.setZAccelOffset(1386);
 
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
@@ -400,6 +410,7 @@ void setup() {
 
   // configure LED for output
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
 
   pinMode(Lencoder, INPUT);
   attachInterrupt(Lencoder, handleLeftInterrupt, FALLING);
@@ -413,29 +424,52 @@ void setup() {
 
   analogReadResolution(9);
 
+
   balancePID.SetMode(1);
+  //balancePID.SetOutputLimits(motorGain-256, 256-motorGain);
+  //balancePID.SetSampleTime(4);
+
 }
 
 
 void loop() {
+
   //RemoteXY_Handler();
   // Kd = analogRead(potPin)/100.0;
   // Serial.print(Kd);
   // Serial.print("\t");
   // balancePID.SetTunings(Kp, Ki, Kd);
+  Ki = analogRead(potPin)/1.0;
+  Serial.print(Ki);
+  Serial.print("\t");
+  balancePID.SetTunings(Kp, Ki, Kd);
   readMPU();
   Input = -ypr[1] * 180 / M_PI;
-  if (Input >= 50 || Input <= -50) {
+
+  //|| measureCurrent() >= 15.0
+  if (Input >= 50 || Input <= -50 || measureCurrent() <= -30.0) 
+  {
     while (1) {
       leftMotor.rotate(0);
       rightMotor.rotate(0);
-
+      Serial.println(analogRead(potPin)/1.0);
+      digitalWrite(LED_BUILTIN, HIGH);
+      measureCurrent();
+      delay(100);
     }
+  }
+  if (Input <= 0.1 && Input >= -0.1)
+  {
+    //balancePID.outputSum = balancePID.outputSum/2;
+    digitalWrite(LED_BUILTIN, HIGH);
   }
   balancePID.Compute();
   debugGyro();
   Serial.print("\t");
-  Serial.println(Output);
+  Serial.print(Output);
   leftMotor.rotate(Output);
   rightMotor.rotate(Output);
+  measureCurrent();
+  Serial.println();
+  digitalWrite(LED_BUILTIN, 0);
 }
