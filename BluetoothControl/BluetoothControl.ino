@@ -124,6 +124,7 @@ PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
 
 class Motor {
 public:
+  int8_t speedOffset = 0;
   uint8_t Pin1;
   uint8_t Pin2;
   uint8_t PinPWM;
@@ -139,7 +140,7 @@ public:
     pinMode(Pin1, OUTPUT);
     pinMode(Pin2, OUTPUT);
   }
-  void rotate(int speed) {
+  void rotate(int8_t speed) {
 
     //Serial.println(speed);
     if (speed == 0) {
@@ -455,6 +456,46 @@ void remoteControl() {
 
   remoteCtrlRight = (RemoteXY.joystick_y * 0.05)
                     + (-RemoteXY.joystick_x * 0.05);
+      
+}
+
+int8_t rotationDegrees = 0;
+int8_t targetAngle = 0;
+void turnToAngle(int8_t rotationDegreesInput)
+{
+  rotationDegrees += rotationDegreesInput;
+  targetAngle = (ypr[0] * 180 / M_PI) + rotationDegrees;
+}
+void ExecuteTurn()
+{
+  if(Output >= 100 || Output <= -100 || rotationDegrees == 0)
+  {
+    return;
+  }
+  else 
+  {
+    
+    
+  }
+}
+
+void formatText()
+{
+  char outputString[31];
+  char stringBuffer[16];
+  strcpy(outputString, "Gyro: ");
+  dtostrf(Input, 3, 2, stringBuffer);
+  strcat(outputString, stringBuffer);
+
+  strcat(outputString," \tAcel: ");
+  dtostrf(aaWorld.y, 3, 2, stringBuffer);
+  strcat(outputString, stringBuffer);
+
+  strcat(outputString," \tlinCal: ");
+  dtostrf(linearCalibration(), 3, 2, stringBuffer);
+  strcat(outputString, stringBuffer);
+
+  strcpy(RemoteXY.textBox, outputString);
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -575,3 +616,6 @@ void loop() {
   Serial.println();
   digitalWrite(LED_BUILTIN, 0);
 }
+// test dlpf   getDLPFMode()
+// test higher freq pwm max:100kHz
+
