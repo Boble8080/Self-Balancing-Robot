@@ -25,101 +25,92 @@
 #define currentMeter 35
 #define MotorENABLE 27
 
-#define pwmHz 20  // PWM frequency of 1 KHz // test others
+#define pwmHz 1000  // PWM frequency of 1 KHz // test others
 #define pwmRes 8    // 8-bit resolution
 
 /////////////////////////////////////////////////////////////////////////
 //                              PID                                    //
 /////////////////////////////////////////////////////////////////////////
-class PID
-{
-  public:
+class PID {
+public:
 
-    double kp;                  // * (P)roportional Tuning Parameter
-    double ki;                  // * (I)ntegral Tuning Parameter
-    double kd;                  // * (D)erivative Tuning Parameter
+  double kp;  // * (P)roportional Tuning Parameter
+  double ki;  // * (I)ntegral Tuning Parameter
+  double kd;  // * (D)erivative Tuning Parameter
 
-    double *myInput;              // * Pointers to the Input, Output, and Setpoint variables
-    double *myOutput;             //   This creates a hard link between the variables and the
-    double *mySetpoint;           //   PID, freeing the user from having to constantly tell us
+  double* myInput;     // * Pointers to the Input, Output, and Setpoint variables
+  double* myOutput;    //   This creates a hard link between the variables and the
+  double* mySetpoint;  //   PID, freeing the user from having to constantly tell us
 
-    uint32_t lastTime;
-    double outputSum, lastInput;
+  uint32_t lastTime;
+  double outputSum, lastInput;
 
-    uint32_t SampleTime = 4;
-    double outMin = -255;
-    double outMax =  255;
-    bool inAuto;
+  uint32_t SampleTime = 4;
+  double outMin = -255;
+  double outMax = 255;
+  bool inAuto;
 
 
-    PID(double* Input, double* Output, double* Setpoint, double Kp, double Ki, double Kd)
-    {
-      myOutput = Output;
-      myInput = Input;
-      mySetpoint = Setpoint;
-      inAuto = false;
-      PID::SetTunings(Kp, Ki, Kd);
-      lastTime = millis() - SampleTime;
+  PID(double* Input, double* Output, double* Setpoint, double Kp, double Ki, double Kd) {
+    myOutput = Output;
+    myInput = Input;
+    mySetpoint = Setpoint;
+    inAuto = false;
+    PID::SetTunings(Kp, Ki, Kd);
+    lastTime = millis() - SampleTime;
+  }
+
+  void enable(int Mode) {
+    bool newAuto = (Mode == 1);
+    if (newAuto && !inAuto) { /*we just went from manual to auto*/
+      outputSum = *myOutput;
+      lastInput = *myInput;
+      if (outputSum > outMax) outputSum = outMax;
+      else if (outputSum < outMin) outputSum = outMin;
     }
+    inAuto = newAuto;
+  }
+  bool Compute(double inputSetPoint) {
+    if (!inAuto) return false;
+    uint32_t now = millis();
+    uint32_t timeChange = (now - lastTime);
+    if (timeChange >= SampleTime) {
+      /*Compute all the working error variables*/
+      double input = *myInput;
+      double error = inputSetPoint - input;
+      double dInput = (input - lastInput);
+      outputSum += (ki * error);
 
-    void enable(int Mode)
-    {
-      bool newAuto = (Mode == 1);
-      if (newAuto && !inAuto)
-      { /*we just went from manual to auto*/
-        outputSum = *myOutput;
-        lastInput = *myInput;
-        if (outputSum > outMax) outputSum = outMax;
-        else if (outputSum < outMin) outputSum = outMin;
-      }
-      inAuto = newAuto;
-    }
-    bool Compute()
-    {
-      if (!inAuto) return false;
-      uint32_t now = millis();
-      uint32_t timeChange = (now - lastTime);
-      if (timeChange >= SampleTime)
-      {
-        /*Compute all the working error variables*/
-        double input = *myInput;
-        double error = *mySetpoint - input;
-        double dInput = (input - lastInput);
-        outputSum += (ki * error);
+      if (outputSum > outMax) outputSum = outMax;
+      else if (outputSum < outMin) outputSum = outMin;
 
-        if (outputSum > outMax) outputSum = outMax;
-        else if (outputSum < outMin) outputSum = outMin;
-
-        double output;
-        output = kp * error;
+      double output;
+      output = kp * error;
 
 
-        /*Compute Rest of PID Output*/
-        output += outputSum - kd * dInput;
+      /*Compute Rest of PID Output*/
+      output += outputSum - kd * dInput;
 
-        if (output > outMax) output = outMax;
-        else if (output < outMin) output = outMin;
-        *myOutput = output;
+      if (output > outMax) output = outMax;
+      else if (output < outMin) output = outMin;
+      *myOutput = output;
 
-        /*Remember some variables for next time*/
-        lastInput = input;
-        lastTime = now;
-        return true;
-      }
-      else return false;
-    }
-    void SetTunings(double Kp, double Ki, double Kd)
-    {
-      double SampleTimeInSec = ((double)SampleTime) / 1000;
-      kp = Kp;
-      ki = Ki * SampleTimeInSec;
-      kd = Kd / SampleTimeInSec;
-    }
-    void SetOutputLimits(double Min, double Max)
-    {
-      outMin = Min;
-      outMax = Max;
-    }
+      /*Remember some variables for next time*/
+      lastInput = input;
+      lastTime = now;
+      return true;
+    } else return false;
+  }
+  void SetTunings(double Kp, double Ki, double Kd) {
+    double SampleTimeInSec = ((double)SampleTime) / 1000;
+    kp = Kp;
+    ki = Ki * SampleTimeInSec;
+    kd = Kd / SampleTimeInSec;
+  }
+  void SetOutputLimits(double Min, double Max) {
+    outMin = Min;
+    outMax = Max;
+  }
 };
 
 double Setpoint = 0;
@@ -132,63 +123,59 @@ PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
 /////////////////////////////////////////////////////////////////////////
 
 class Motor {
-  public:
-    uint8_t Pin1;
-    uint8_t Pin2;
-    uint8_t PinPWM;
-    uint8_t PWMchannel;
-    Motor(uint8_t inPin1, uint8_t inPin2, uint8_t inPinPWM, uint8_t inPWMchannel) {
-      // Stores constructor input as private variables
-      Pin1 = inPin1;
-      Pin2 = inPin2;
-      PinPWM = inPinPWM;
-      PWMchannel = inPWMchannel;
-      ledcSetup(PWMchannel, pwmHz, pwmRes);
-      ledcAttachPin(PinPWM, PWMchannel);
-      pinMode(Pin1, OUTPUT);
-      pinMode(Pin2, OUTPUT);
+public:
+  uint8_t Pin1;
+  uint8_t Pin2;
+  uint8_t PinPWM;
+  uint8_t PWMchannel;
+  Motor(uint8_t inPin1, uint8_t inPin2, uint8_t inPinPWM, uint8_t inPWMchannel) {
+    // Stores constructor input as private variables
+    Pin1 = inPin1;
+    Pin2 = inPin2;
+    PinPWM = inPinPWM;
+    PWMchannel = inPWMchannel;
+    ledcSetup(PWMchannel, pwmHz, pwmRes);
+    ledcAttachPin(PinPWM, PWMchannel);
+    pinMode(Pin1, OUTPUT);
+    pinMode(Pin2, OUTPUT);
+  }
+  void rotate(int speed) {
+
+    //Serial.println(speed);
+    if (speed == 0) {
+      digitalWrite(Pin1, 0);
+      digitalWrite(Pin2, 0);
+      ledcWrite(PWMchannel, 0);
+      //Serial.print("\t");
+      //Serial.print(abs(speed));
+    } else if (speed > 0) {
+      digitalWrite(Pin1, 1);
+      digitalWrite(Pin2, 0);
+      ledcWrite(PWMchannel, speed);
+      //Serial.print("\t");
+      //Serial.print(speed + motorGain);
+    } else if (speed < 0) {
+      digitalWrite(Pin1, 0);
+      digitalWrite(Pin2, 1);
+      ledcWrite(PWMchannel, abs(speed));
+      //Serial.print("\t");
+      //Serial.print(abs(speed) + motorGain);
     }
-    void rotate(int speed)
-    {
-      //motorGain = 20;
-      //Serial.println(speed);
-      if (speed == 0) {
-        digitalWrite(Pin1, 0);
-        digitalWrite(Pin2, 0);
-        ledcWrite(PWMchannel, 0);
-        //Serial.print("\t");
-        //Serial.print(abs(speed));
-      } else if (speed > 0) {
-        digitalWrite(Pin1, 1);
-        digitalWrite(Pin2, 0);
-        ledcWrite(PWMchannel, speed );
-        //Serial.print("\t");
-        //Serial.print(speed + motorGain);
-      } else if (speed < 0) {
-        digitalWrite(Pin1, 0);
-        digitalWrite(Pin2, 1);
-        ledcWrite(PWMchannel, abs(speed) );
-        //Serial.print("\t");
-        //Serial.print(abs(speed) + motorGain);
-      }
-    }
+  }
 };
 
 Motor leftMotor(Lmotor1, Lmotor2, LmotorEn, LpwmChannel);
 Motor rightMotor(Rmotor1, Rmotor2, RmotorEn, RpwmChannel);
 
-float measureCurrent()
-{
+float measureCurrent() {
   float reading = analogRead(currentMeter);
-  Serial.print("\t");
-  Serial.print(reading - 230.0);
   Serial.print(" ");
+  Serial.print(reading - 230.0);
+  Serial.print("\t ");
   return reading;
-
 }
 
-void motorEnable(bool enable)
-{
+void motorEnable(bool enable) {
   digitalWrite(MotorENABLE, enable);
 }
 
@@ -197,20 +184,20 @@ void motorEnable(bool enable)
 /////////////////////////////////////////////////////////////////////////
 
 const byte LeftEncoderInterrupt = Lencoder;  // Assign the interrupt pin
-volatile uint64_t LeftStartValue = 0;  // First interrupt value
-volatile uint64_t LeftPeriodCount;     // period in counts
-float LeftFreq;                        // frequency
+volatile uint64_t LeftStartValue = 0;        // First interrupt value
+volatile uint64_t LeftPeriodCount;           // period in counts
+float LeftFreq;                              // frequency
 float LeftRPM;
-volatile int64_t  LeftSteps = 0;
+volatile int64_t LeftSteps = 0;
 hw_timer_t* LeftTimer = NULL;  // pointer to a variable of type hw_timer_t
 
 
 const byte RightEncoderInterrupt = Rencoder;  // Assign the interrupt pin
-volatile uint64_t RightStartValue = 0;  // First interrupt value
-volatile uint64_t RightPeriodCount;     // period in counts
-float RightFreq;                        // frequency
+volatile uint64_t RightStartValue = 0;        // First interrupt value
+volatile uint64_t RightPeriodCount;           // period in counts
+float RightFreq;                              // frequency
 float RightRPM;
-volatile int64_t  RightSteps = 0;
+volatile int64_t RightSteps = 0;
 hw_timer_t* RightTimer = NULL;  // pointer to a variable of type hw_timer_t
 
 void IRAM_ATTR handleLeftInterrupt() {
@@ -251,32 +238,33 @@ float returnRightRPM() {
   return RightRPM;
 }
 
-uint16_t linearCalCutoff = 5000;
-uint16_t angleCalCutoff = 500;
+uint16_t linearCalCutoff = 500;
+uint16_t angleCalCutoff = 50;
 float linearOffset = 0;
-void linearCalibration()
-{
+uint64_t linearCalTimer = 0;
+uint16_t linearCalInterval = 3000;
+float linearCalibration() {
   // Linear Calibration
-  
+  if (linearOffset >= 5.0) {
+    return linearOffset;
+  } else if (millis() - linearCalTimer < linearCalInterval) {
+    return linearOffset;
+  }
   // Left step count is bigger than the right
-  if (abs(LeftSteps) >= abs(RightSteps))
-  {
+  else if (abs(LeftSteps) >= abs(RightSteps)) {
     // and is above cuttoff
-    if (abs(LeftSteps) < linearCalCutoff)
-    {
-      return;
+    if (abs(LeftSteps) < linearCalCutoff) {
+      return linearOffset;
     }
     // and is positive
-    if (LeftSteps > 0)
-    {
+    if (LeftSteps > 0) {
       // increase offset and reset Steps
       linearOffset += 0.1;
       LeftSteps -= RightSteps;
       RightSteps = 0;
     }
     // or is negative
-    else
-    {
+    else {
       // decrease offset and reset Steps
       linearOffset -= 0.1;
       LeftSteps += RightSteps;
@@ -284,46 +272,26 @@ void linearCalibration()
     }
   }
   // Right step count is bigger than the Left
-  else
-  {
+  else {
     // and is above cuttoff
-    if (abs(RightSteps) < linearCalCutoff)
-    {
-      return;
+    if (abs(RightSteps) < linearCalCutoff) {
+      return linearOffset;
     }
     // and is positive
-    if (RightSteps > 0)
-    {
+    if (RightSteps > 0) {
       // increase offset and reset Steps
       linearOffset += 0.1;
       RightSteps -= LeftSteps;
       LeftSteps = 0;
-    }
-    else
-    {
+    } else {
       // increase offset and reset Steps
       linearOffset -= 0.1;
       RightSteps += LeftSteps;
       LeftSteps = 0;
     }
   }
-
-// sign problem
-
-//  // Angular Calibration
-//  RightStepsDelta = RightSteps-LeftSteps
-//  if(RightStepsDelta > angularCalOffset)
-//  {
-//    leftAngleOffset += 0.1;
-//    RightSteps -= RightStepsDelta;
-//  }
-//  LeftStepsDelta = LeftSteps-RightSteps
-//  if(LeftStepsDelta > angularCalOffset)
-//  {
-//    rightAngleOffset += 0.1;
-//    LeftSteps -= LeftStepsDelta;
-//  }
-  
+  linearCalTimer = millis();
+  return linearOffset;
 }
 
 
@@ -351,13 +319,11 @@ float euler[3];       // [psi, theta, phi]    Euler angle container
 float ypr[3];         // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 volatile bool mpuInterrupt = false;  // indicates whether MPU interrupt pin has gone high
-void dmpDataReady()
-{
+void dmpDataReady() {
   mpuInterrupt = true;
 }
 
-void debugAngle()
-{
+void debugAngle() {
   Serial.print("Gyro: ");
   Serial.print(ypr[1] * 180 / M_PI);
   Serial.print("\t Accel:");
@@ -417,8 +383,7 @@ void readMPU() {
 
     Input = -ypr[1] * 180 / M_PI;
     digitalWrite(LED_BUILTIN, LOW);
-    if (Input <= 0.1 && Input >= -0.1)
-    {
+    if (Input <= 0.1 && Input >= -0.1) {
       digitalWrite(LED_BUILTIN, HIGH);
     }
   }
@@ -429,14 +394,15 @@ void readMPU() {
 
 bool LEDstate = 0;
 uint32_t LEDoldTime = 0;
-void LEDflash(uint16_t speed) // Led flash in ms
+void LEDflash(uint16_t speed)  // Led flash in ms
 {
-  if (millis() - LEDoldTime >= speed)
-  {
+  if (speed == 0) {
+    digitalWrite(LED_BUILTIN, 0);
+  } else if (millis() - LEDoldTime >= speed) {
     LEDoldTime = millis();
     LEDstate = !LEDstate;
+    digitalWrite(LED_BUILTIN, LEDstate);
   }
-  digitalWrite(LED_BUILTIN, LEDstate);
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -446,7 +412,7 @@ void LEDflash(uint16_t speed) // Led flash in ms
 // RemoteXY select connection mode and include library
 #define REMOTEXY_MODE__ESP32CORE_BLE
 #include <BLEDevice.h>
-
+#include <BluetoothSerial.h>
 #include <RemoteXY.h>
 
 // RemoteXY connection settings
@@ -455,21 +421,20 @@ void LEDflash(uint16_t speed) // Led flash in ms
 
 // RemoteXY configurate
 #pragma pack(push, 1)
-uint8_t RemoteXY_CONF[] =   // 72 bytes
-{ 255, 2, 0, 35, 0, 65, 0, 16, 170, 2, 5, 0, 66, 30, 30, 30, 17, 62, 30, 30,
-  2, 26, 31, 71, 56, 9, 32, 46, 46, 5, 1, 54, 54, 0, 2, 24, 75, 0, 0, 180,
-  194, 0, 0, 180, 66, 0, 0, 240, 65, 0, 0, 32, 65, 0, 0, 160, 64, 24, 0, 67,
-  4, 4, 3, 92, 6, 2, 39, 60, 8, 2, 26, 31
-};
+uint8_t RemoteXY_CONF[] =  // 72 bytes
+  { 255, 2, 0, 35, 0, 65, 0, 16, 170, 2, 5, 0, 66, 30, 30, 30, 17, 62, 30, 30,
+    2, 26, 31, 71, 56, 9, 32, 46, 46, 5, 1, 54, 54, 0, 2, 24, 75, 0, 0, 180,
+    194, 0, 0, 180, 66, 0, 0, 240, 65, 0, 0, 32, 65, 0, 0, 160, 64, 24, 0, 67,
+    4, 4, 3, 92, 6, 2, 39, 60, 8, 2, 26, 31 };
 
 // this structure defines all the variables and events of your control interface
 struct {
   // input variables
-  int8_t joystick_x; // from -100 to 100
-  int8_t joystick_y; // from -100 to 100
+  int8_t joystick_x;  // from -100 to 100
+  int8_t joystick_y;  // from -100 to 100
 
   // output variables
-  float Angle;  // from -90 to 90
+  float Angle;       // from -90 to 90
   char textBox[31];  // string UTF8 end zero
 
   // other variable
@@ -481,16 +446,15 @@ struct {
 int8_t remoteCtrlLeft = 0;
 int8_t remoteCtrlRight = 0;
 
-void remoteControl()
-{
-    
-    RemoteXY.Angle = Input;
-    
-    remoteCtrlLeft = (RemoteXY.joystick_y * 0.05)
-                    +(RemoteXY.joystick_x * 0.05);
-                   
-    remoteCtrlRight = (RemoteXY.joystick_y * 0.05)
-                     +(-RemoteXY.joystick_x * 0.05);
+void remoteControl() {
+
+  RemoteXY.Angle = Input;
+
+  remoteCtrlLeft = (RemoteXY.joystick_y * 0.05)
+                   + (RemoteXY.joystick_x * 0.05);
+
+  remoteCtrlRight = (RemoteXY.joystick_y * 0.05)
+                    + (-RemoteXY.joystick_x * 0.05);
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -566,9 +530,10 @@ void setup() {
   balancePID.enable(1);
   //balancePID.SetOutputLimits(motorGain-256, 256-motorGain);
 
-  delay(1000);
-  while (Input >= 10 && Input <= 10)
-  {
+  readMPU();
+  delay(2000);
+  readMPU();
+  while (Input >= 10 && Input <= 10) {
     readMPU();
     motorEnable(0);
     LEDflash(100);
@@ -580,31 +545,33 @@ void setup() {
 void loop() {
 
   RemoteXY_Handler();
-  readMPU();
-  while (RemoteXY.connect_flag = 0)
-  {
+  if (RemoteXY.connect_flag == 0)
     LEDflash(500);
-    motorEnable(0);
-  }
-  if (Input >= 50 || Input <= -50 || measureCurrent() <= -30.0)
-  {
-    while (1) {
+  else LEDflash(0);
+  readMPU();
+
+  if (Input >= 50 || Input <= -50 || measureCurrent() <= -40.0) {
+    while (Input >= -10 || Input <= 10) {
+      readMPU();
+      debugAngle();
+      RemoteXY_Handler();
       motorEnable(0);
       digitalWrite(LED_BUILTIN, HIGH);
-      measureCurrent();
-      delay(100);
+      Serial.println();
     }
-  }
-  else motorEnable(1);
-
-  balancePID.Compute();
+  } else motorEnable(1);
+  balancePID.Compute(Setpoint + linearCalibration());
   debugAngle();
-  linearCalibration();
   Serial.print("\t Output: ");
   Serial.print(Output);
-  leftMotor.rotate(Output+linearOffset+remoteCtrlLeft);
-  rightMotor.rotate(Output+linearOffset+remoteCtrlRight);
-  measureCurrent();
+  Serial.print("\t linear: ");
+  Serial.print(linearOffset);
+  leftMotor.rotate(Output);
+  rightMotor.rotate(Output);
+  Serial.print("\t Steps: ");
+  Serial.print(LeftSteps);
+  Serial.print("\t RPM: ");
+  Serial.print(returnLeftRPM());
   Serial.println();
   digitalWrite(LED_BUILTIN, 0);
 }
