@@ -152,9 +152,6 @@ void loop()
 {
   val = analogRead(potPin) / 2;
   rightMotor.rotate(val);
-  leftMotor.rotate(val);
-  delay(1000);
-  rightMotor.rotate(-val);
-  leftMotor.rotate(-val);
-  delay(1000);
+  leftMotor.rotate(0);
+  
 }
