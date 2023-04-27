@@ -25,7 +25,7 @@
 #define currentMeter 35
 #define MotorENABLE 27
 
-#define pwmHz 1000  // PWM frequency of 1 KHz // test others
+#define pwmHz 1350  // PWM frequency of 1 KHz // test others
 #define pwmRes 8    // 8-bit resolution
 
 double Setpoint = 0;
@@ -330,22 +330,37 @@ void setup() {
 
   analogReadResolution(9);
 
+  mpu.setDLPFMode(1);
 
-  balancePID.SetMode(1);
+  balancePID.SetMode(0);
   balancePID.SetOutputLimits(-256, 256);
-  balancePID.SetSampleTime(100);
+  balancePID.SetSampleTime(3);
+  motorEnable(0);
+  readMPU();
+  delay(2000);
+  readMPU();
+  while (Input >= 10 && Input <= 10) {
+    readMPU();
+    motorEnable(0);
+    LEDflash(100);
+  }
   motorEnable(1);
 }
 
-
+double K;
 void loop() {
   readMPU();
-  if (Input >= 50 || Input <= -50 || measureCurrent() <= -30.0)
+  K = analogRead(potPin)/10.0;
+  Serial.print(K);
+  Serial.print("\t");
+  //balancePID.SetTunings(K, 118.0, 0.1);
+
+  if (abs(Input) >= 70 )
   {
     while (1) {
       leftMotor.rotate(0);
       rightMotor.rotate(0);
-      Serial.println(analogRead(potPin) / 1.0);
+      Serial.println(analogRead(potPin) / 10.0);
       digitalWrite(LED_BUILTIN, HIGH);
       measureCurrent();
       delay(100);
@@ -357,13 +372,12 @@ void loop() {
     //balancePID.outputSum = balancePID.outputSum/2;
     digitalWrite(LED_BUILTIN, HIGH);
   }
-  balancePID.Compute();
+  Serial.print(balancePID.Compute());
   debugAngle();
   Serial.print("\t");
   Serial.print(Output);
   leftMotor.rotate(Output);
   rightMotor.rotate(Output);
-  measureCurrent();
   Serial.println();
   digitalWrite(LED_BUILTIN, 0);
 }

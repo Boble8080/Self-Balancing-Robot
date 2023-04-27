@@ -77,7 +77,7 @@ public:
     if (timeChange >= SampleTime) {
       /*Compute all the working error variables*/
       double input = *myInput;
-      double error = inputSetPoint - input;
+      double error = *mySetpoint - input;
       double dInput = (input - lastInput);
       outputSum += (ki * error);
 
@@ -406,40 +406,44 @@ void LEDflash(uint16_t speed)  // Led flash in ms
   }
 }
 
-/////////////////////////////////////////////////////////////////////////
-//                              Remote Control                         //
-/////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////
+//        RemoteXY include library          //
+//////////////////////////////////////////////
 
-// RemoteXY select connection mode and include library
+#ifdef BLUETOOTH_ENABLED
+// RemoteXY select connection mode and include library 
 #define REMOTEXY_MODE__ESP32CORE_BLE
 #include <BLEDevice.h>
-#include <BluetoothSerial.h>
+
 #include <RemoteXY.h>
 
-// RemoteXY connection settings
+// RemoteXY connection settings 
 #define REMOTEXY_BLUETOOTH_NAME "SelfBalancingRobot"
 
 
-// RemoteXY configurate
+// RemoteXY configurate  
 #pragma pack(push, 1)
-uint8_t RemoteXY_CONF[] =  // 72 bytes
-  { 255, 2, 0, 35, 0, 65, 0, 16, 170, 2, 5, 0, 66, 30, 30, 30, 17, 62, 30, 30,
-    2, 26, 31, 71, 56, 9, 32, 46, 46, 5, 1, 54, 54, 0, 2, 24, 75, 0, 0, 180,
-    194, 0, 0, 180, 66, 0, 0, 240, 65, 0, 0, 32, 65, 0, 0, 160, 64, 24, 0, 67,
-    4, 4, 3, 92, 6, 2, 39, 60, 8, 2, 26, 31 };
-
-// this structure defines all the variables and events of your control interface
+uint8_t RemoteXY_CONF[] =   // 85 bytes
+  { 255,2,0,204,0,78,0,16,170,2,5,32,63,26,37,37,17,62,30,30,
+  2,26,31,71,56,250,24,58,58,5,1,54,54,0,2,24,75,0,0,180,
+  194,0,0,180,66,0,0,240,65,0,0,32,65,0,0,160,64,24,0,67,
+  4,0,3,100,6,2,39,60,8,2,26,100,67,4,0,10,100,6,0,3,
+  100,6,2,26,100 };
+  
+// this structure defines all the variables and events of your control interface 
 struct {
-  // input variables
-  int8_t joystick_x;  // from -100 to 100
-  int8_t joystick_y;  // from -100 to 100
 
-  // output variables
-  float Angle;       // from -90 to 90
-  char textBox[31];  // string UTF8 end zero
+    // input variables
+  int8_t joystick_x; // from -100 to 100  
+  int8_t joystick_y; // from -100 to 100  
 
-  // other variable
-  uint8_t connect_flag;  // =1 if wire connected, else =0
+    // output variables
+  float Angle;  // from -90 to 90 
+  char textBox[100];  // string UTF8 end zero 
+  char textBox2[100];  // string UTF8 end zero 
+
+    // other variable
+  uint8_t connect_flag;  // =1 if wire connected, else =0 
 
 } RemoteXY;
 #pragma pack(pop)
@@ -481,15 +485,15 @@ void ExecuteTurn()
 
 void formatText()
 {
-  char outputString[31];
+  char outputString[100];
   char stringBuffer[16];
   strcpy(outputString, "Gyro: ");
   dtostrf(Input, 3, 2, stringBuffer);
   strcat(outputString, stringBuffer);
 
-  strcat(outputString," \tAcel: ");
-  dtostrf(aaWorld.y, 3, 2, stringBuffer);
-  strcat(outputString, stringBuffer);
+  // strcat(outputString," \tAcel: ");
+  // dtostrf(aaWorld.y, 3, 2, stringBuffer);
+  // strcat(outputString, stringBuffer);
 
   strcat(outputString," \tlinCal: ");
   dtostrf(linearCalibration(), 3, 2, stringBuffer);
@@ -498,12 +502,15 @@ void formatText()
   strcpy(RemoteXY.textBox, outputString);
 }
 
+#endif BLUETOOTH_ENABLED
 /////////////////////////////////////////////////////////////////////////
 //                          Setup & Loop                               //
 /////////////////////////////////////////////////////////////////////////
 
 void setup() {
+  #ifdef BLUETOOTH_ENABLED
   RemoteXY_Init();
+  #endif BLUETOOTH_ENABLED
   Wire.begin();
   Wire.setClock(400000);  // 400kHz I2C clock. Comment this line if having compilation difficulties
   Serial.begin(115200);
@@ -584,25 +591,33 @@ void setup() {
 
 
 void loop() {
-
+  #ifdef BLUETOOTH_ENABLED
   RemoteXY_Handler();
+  formatText();
   if (RemoteXY.connect_flag == 0)
     LEDflash(500);
   else LEDflash(0);
+  #endif BLUETOOTH_ENABLED
   readMPU();
+  debugAngle();
 
-  if (Input >= 50 || Input <= -50 || measureCurrent() <= -40.0) {
-    while (Input >= -10 || Input <= 10) {
+//|| measureCurrent() <= -40.0
+  if (abs(Input >= 50) ) 
+  {
+    Serial.println("Fall");
+    while (abs(Input >= 10)) 
+    {
+      #ifdef BLUETOOTH_ENABLED
+      RemoteXY_Handler();
+      #endif BLUETOOTH_ENABLED
       readMPU();
       debugAngle();
-      RemoteXY_Handler();
       motorEnable(0);
       digitalWrite(LED_BUILTIN, HIGH);
       Serial.println();
     }
   } else motorEnable(1);
   balancePID.Compute(Setpoint + linearCalibration());
-  debugAngle();
   Serial.print("\t Output: ");
   Serial.print(Output);
   Serial.print("\t linear: ");
@@ -613,6 +628,8 @@ void loop() {
   Serial.print(LeftSteps);
   Serial.print("\t RPM: ");
   Serial.print(returnLeftRPM());
+  Serial.print("\t getDLPFMode(): ");
+  Serial.print(mpu.getDLPFMode());
   Serial.println();
   digitalWrite(LED_BUILTIN, 0);
 }
