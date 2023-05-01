@@ -25,12 +25,16 @@
 #define currentMeter 35
 #define MotorENABLE 27
 
-#define pwmHz 1000  // PWM frequency of 1 KHz // test others
+#define pwmHz 1350  // PWM frequency of 1 KHz // test others
 #define pwmRes 8    // 8-bit resolution
 
 /////////////////////////////////////////////////////////////////////////
 //                              PID                                    //
 /////////////////////////////////////////////////////////////////////////
+double Setpoint = 0;
+double Input, Output;
+double Kp = 7.6, Ki = 118.00, Kd = 0.15;
+
 class PID {
 public:
 
@@ -70,37 +74,40 @@ public:
     }
     inAuto = newAuto;
   }
-  bool Compute(double inputSetPoint) {
-    if (!inAuto) return false;
-    uint32_t now = millis();
-    uint32_t timeChange = (now - lastTime);
-    if (timeChange >= SampleTime) {
-      /*Compute all the working error variables*/
-      double input = *myInput;
-      double error = *mySetpoint - input;
-      double dInput = (input - lastInput);
-      outputSum += (ki * error);
+  bool Compute(double SetpointIn = Setpoint)
+    {
+      if (!inAuto) return false;
+      uint32_t now = millis();
+      uint32_t timeChange = (now - lastTime);
+      if (timeChange >= SampleTime)
+      {
+        /*Compute all the working error variables*/
+        double input = *myInput;
+        double error = SetpointIn - input;
+        double dInput = (input - lastInput);
+        outputSum += (ki * error);
 
-      if (outputSum > outMax) outputSum = outMax;
-      else if (outputSum < outMin) outputSum = outMin;
+        if (outputSum > outMax) outputSum = outMax;
+        else if (outputSum < outMin) outputSum = outMin;
 
-      double output;
-      output = kp * error;
+        double output;
+        output = kp * error;
 
 
-      /*Compute Rest of PID Output*/
-      output += outputSum - kd * dInput;
+        /*Compute Rest of PID Output*/
+        output += outputSum - kd * dInput;
 
-      if (output > outMax) output = outMax;
-      else if (output < outMin) output = outMin;
-      *myOutput = output;
+        if (output > outMax) output = outMax;
+        else if (output < outMin) output = outMin;
+        *myOutput = output;
 
-      /*Remember some variables for next time*/
-      lastInput = input;
-      lastTime = now;
-      return true;
-    } else return false;
-  }
+        /*Remember some variables for next time*/
+        lastInput = input;
+        lastTime = now;
+        return true;
+      }
+      else return false;
+    }
   void SetTunings(double Kp, double Ki, double Kd) {
     double SampleTimeInSec = ((double)SampleTime) / 1000;
     kp = Kp;
@@ -112,11 +119,9 @@ public:
     outMax = Max;
   }
 };
-
-double Setpoint = 0;
-double Input, Output;
-double Kp = 7.6, Ki = 118.00, Kd = 0.15;
 PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
+
+
 
 /////////////////////////////////////////////////////////////////////////
 //                               Motor                                 //
@@ -140,7 +145,7 @@ public:
     pinMode(Pin1, OUTPUT);
     pinMode(Pin2, OUTPUT);
   }
-  void rotate(int8_t speed) {
+  void rotate(int16_t speed) {
 
     //Serial.println(speed);
     if (speed == 0) {
@@ -244,7 +249,8 @@ uint16_t angleCalCutoff = 50;
 float linearOffset = 0;
 uint64_t linearCalTimer = 0;
 uint16_t linearCalInterval = 3000;
-float linearCalibration() {
+float linearCalibration()
+ {
   // Linear Calibration
   if (linearOffset >= 5.0) {
     return linearOffset;
@@ -260,14 +266,14 @@ float linearCalibration() {
     // and is positive
     if (LeftSteps > 0) {
       // increase offset and reset Steps
-      linearOffset += 0.1;
+      linearOffset += 0.05;
       LeftSteps -= RightSteps;
       RightSteps = 0;
     }
     // or is negative
     else {
       // decrease offset and reset Steps
-      linearOffset -= 0.1;
+      linearOffset -= 0.05;
       LeftSteps += RightSteps;
       RightSteps = 0;
     }
@@ -341,33 +347,6 @@ void debugGyro() {
   Serial.print(ypr[2] * 180 / M_PI);
 }
 
-void debugAccel() {
-  Serial.print(-1800);
-  Serial.print(" ");
-  Serial.print(1800);
-  Serial.print(" ");
-  Serial.print("aworld\t");
-  Serial.print(aaWorld.x);
-  Serial.print("\t");
-  Serial.print(aaWorld.y);
-  Serial.print("\t");
-  Serial.print(aaWorld.z);
-}
-
-void debugBoth() {
-  Serial.print("Acel: X: ");
-  Serial.print(aaWorld.x);
-  Serial.print("\t\tY: ");
-  Serial.print(aaWorld.y);
-  Serial.print("\t\tZ: ");
-  Serial.print(aaWorld.z);
-  Serial.print("\t\tGyro: Yaw: ");
-  Serial.print(ypr[0] * 180 / M_PI);
-  Serial.print("\tPch: ");
-  Serial.print(ypr[1] * 180 / M_PI);
-  Serial.print("\tRll: ");
-  Serial.print(ypr[2] * 180 / M_PI);
-}
 void readMPU() {
   if (!dmpReady) {
     LEDflash(2000);
@@ -563,12 +542,12 @@ void setup() {
 
 
   pinMode(Lencoder, INPUT);
-  attachInterrupt(Lencoder, handleLeftInterrupt, FALLING);
+  attachInterrupt(Lencoder, handleLeftInterrupt, RISING);
   LeftTimer = timerBegin(0, 2, true);
   timerStart(LeftTimer);
 
   pinMode(Rencoder, INPUT);
-  attachInterrupt(Rencoder, handleRightInterrupt, FALLING);
+  attachInterrupt(Rencoder, handleRightInterrupt, RISING);
   RightTimer = timerBegin(1, 2, true);
   timerStart(LeftTimer);
 
@@ -576,7 +555,7 @@ void setup() {
   pinMode(MotorENABLE, OUTPUT);
 
   balancePID.enable(1);
-  //balancePID.SetOutputLimits(motorGain-256, 256-motorGain);
+  mpu.setDLPFMode(3);
 
   readMPU();
   delay(2000);
@@ -584,7 +563,7 @@ void setup() {
   while (Input >= 10 && Input <= 10) {
     readMPU();
     motorEnable(0);
-    LEDflash(100);
+    LEDflash(300);
   }
   motorEnable(1);
 }
@@ -599,13 +578,14 @@ void loop() {
   else LEDflash(0);
   #endif BLUETOOTH_ENABLED
   readMPU();
-  debugAngle();
+  //debugAngle();
+  Serial.print(abs(Input));
 
 //|| measureCurrent() <= -40.0
-  if (abs(Input >= 50) ) 
+  if (abs(Input) >= 50.0 ) 
   {
     Serial.println("Fall");
-    while (abs(Input >= 10)) 
+    while (abs(Input) >= 10) 
     {
       #ifdef BLUETOOTH_ENABLED
       RemoteXY_Handler();
@@ -617,22 +597,22 @@ void loop() {
       Serial.println();
     }
   } else motorEnable(1);
-  balancePID.Compute(Setpoint + linearCalibration());
+  balancePID.Compute(Setpoint +  linearCalibration());
   Serial.print("\t Output: ");
   Serial.print(Output);
   Serial.print("\t linear: ");
   Serial.print(linearOffset);
   leftMotor.rotate(Output);
   rightMotor.rotate(Output);
-  Serial.print("\t Steps: ");
+  Serial.print("\t LSteps: ");
   Serial.print(LeftSteps);
+  Serial.print("\t RSteps: ");
+  Serial.print(RightSteps);
   Serial.print("\t RPM: ");
   Serial.print(returnLeftRPM());
-  Serial.print("\t getDLPFMode(): ");
-  Serial.print(mpu.getDLPFMode());
   Serial.println();
   digitalWrite(LED_BUILTIN, 0);
 }
 // test dlpf   getDLPFMode()
-// test higher freq pwm max:100kHz
+
 
