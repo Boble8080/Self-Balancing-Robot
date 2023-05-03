@@ -74,7 +74,7 @@ public:
     }
     inAuto = newAuto;
   }
-  bool Compute(double SetpointIn = Setpoint)
+  bool Compute()
     {
       if (!inAuto) return false;
       uint32_t now = millis();
@@ -83,7 +83,7 @@ public:
       {
         /*Compute all the working error variables*/
         double input = *myInput;
-        double error = SetpointIn - input;
+        double error = *mySetpoint - input;
         double dInput = (input - lastInput);
         outputSum += (ki * error);
 
@@ -146,26 +146,18 @@ public:
     pinMode(Pin2, OUTPUT);
   }
   void rotate(int16_t speed) {
-
-    //Serial.println(speed);
     if (speed == 0) {
       digitalWrite(Pin1, 0);
       digitalWrite(Pin2, 0);
       ledcWrite(PWMchannel, 0);
-      //Serial.print("\t");
-      //Serial.print(abs(speed));
     } else if (speed > 0) {
       digitalWrite(Pin1, 1);
       digitalWrite(Pin2, 0);
       ledcWrite(PWMchannel, speed);
-      //Serial.print("\t");
-      //Serial.print(speed + motorGain);
     } else if (speed < 0) {
       digitalWrite(Pin1, 0);
       digitalWrite(Pin2, 1);
       ledcWrite(PWMchannel, abs(speed));
-      //Serial.print("\t");
-      //Serial.print(abs(speed) + motorGain);
     }
   }
 };
@@ -330,12 +322,24 @@ void dmpDataReady() {
   mpuInterrupt = true;
 }
 
-void debugAngle() {
+void printSerialDebug() 
+{
   Serial.print("Gyro: ");
   Serial.print(ypr[1] * 180 / M_PI);
   Serial.print("\t Accel:");
   Serial.print(aaWorld.y);
   Serial.print("\t ");
+  Serial.print("\t Output: ");
+  Serial.print(Output);
+  Serial.print("\t linear: ");
+  Serial.print(linearOffset);
+  Serial.print("\t LSteps: ");
+  Serial.print(LeftSteps);
+  Serial.print("\t RSteps: ");
+  Serial.print(RightSteps);
+  Serial.print("\t RPM: ");
+  Serial.print(returnLeftRPM());
+  Serial.println();
 }
 
 void debugGyro() {
@@ -365,6 +369,33 @@ void readMPU() {
     digitalWrite(LED_BUILTIN, LOW);
     if (Input <= 0.1 && Input >= -0.1) {
       digitalWrite(LED_BUILTIN, HIGH);
+    }
+  }
+}
+
+bool fallFlag = false;
+
+void testForFall()
+{
+  // Robot is currently fallen
+  if (fallFlag == true)
+  {
+    motorEnable(false);
+    digitalWrite(LED_BUILTIN, HIGH);
+    // Robot has been lifted up
+    if (abs(Input) <= 10) 
+    {
+      fallFlag = false;
+    }
+  }
+  // Robot has not fallen
+  else 
+  {
+    motorEnable(true);
+    // Robot just fell
+    if (abs(Input) >= 50.0)
+    {
+      fallFlag = true;
     }
   }
 }
@@ -481,7 +512,7 @@ void formatText()
   strcpy(RemoteXY.textBox, outputString);
 }
 
-#endif BLUETOOTH_ENABLED
+#endif //BLUETOOTH_ENABLED
 /////////////////////////////////////////////////////////////////////////
 //                          Setup & Loop                               //
 /////////////////////////////////////////////////////////////////////////
@@ -489,7 +520,7 @@ void formatText()
 void setup() {
   #ifdef BLUETOOTH_ENABLED
   RemoteXY_Init();
-  #endif BLUETOOTH_ENABLED
+  #endif //BLUETOOTH_ENABLED
   Wire.begin();
   Wire.setClock(400000);  // 400kHz I2C clock. Comment this line if having compilation difficulties
   Serial.begin(115200);
@@ -506,7 +537,8 @@ void setup() {
   mpu.setZAccelOffset(1386);
 
   // make sure it worked (returns 0 if so)
-  if (devStatus == 0) {
+  if (devStatus == 0) 
+  {
     mpu.PrintActiveOffsets();
     // turn on the DMP, now that it's ready
     Serial.println(F("Enabling DMP..."));
@@ -539,8 +571,6 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
-
-
   pinMode(Lencoder, INPUT);
   attachInterrupt(Lencoder, handleLeftInterrupt, RISING);
   LeftTimer = timerBegin(0, 2, true);
@@ -568,51 +598,24 @@ void setup() {
   motorEnable(1);
 }
 
-
 void loop() {
+
   #ifdef BLUETOOTH_ENABLED
   RemoteXY_Handler();
   formatText();
   if (RemoteXY.connect_flag == 0)
     LEDflash(500);
   else LEDflash(0);
-  #endif BLUETOOTH_ENABLED
+  #endif //BLUETOOTH_ENABLED
+  
   readMPU();
-  //debugAngle();
-  Serial.print(abs(Input));
+  printSerialDebug();
+  
+  Setpoint = 0 + linearCalibration();
+  balancePID.Compute();
+  testForFall();
 
-//|| measureCurrent() <= -40.0
-  if (abs(Input) >= 50.0 ) 
-  {
-    Serial.println("Fall");
-    while (abs(Input) >= 10) 
-    {
-      #ifdef BLUETOOTH_ENABLED
-      RemoteXY_Handler();
-      #endif BLUETOOTH_ENABLED
-      readMPU();
-      debugAngle();
-      motorEnable(0);
-      digitalWrite(LED_BUILTIN, HIGH);
-      Serial.println();
-    }
-  } else motorEnable(1);
-  balancePID.Compute(Setpoint +  linearCalibration());
-  Serial.print("\t Output: ");
-  Serial.print(Output);
-  Serial.print("\t linear: ");
-  Serial.print(linearOffset);
   leftMotor.rotate(Output);
   rightMotor.rotate(Output);
-  Serial.print("\t LSteps: ");
-  Serial.print(LeftSteps);
-  Serial.print("\t RSteps: ");
-  Serial.print(RightSteps);
-  Serial.print("\t RPM: ");
-  Serial.print(returnLeftRPM());
-  Serial.println();
-  digitalWrite(LED_BUILTIN, 0);
+ 
 }
-// test dlpf   getDLPFMode()
-
-
