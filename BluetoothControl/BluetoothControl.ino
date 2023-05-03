@@ -93,7 +93,6 @@ public:
         double output;
         output = kp * error;
 
-
         /*Compute Rest of PID Output*/
         output += outputSum - kd * dInput;
 
@@ -216,7 +215,7 @@ void IRAM_ATTR handleRightInterrupt() {
 
 float LeftFrequency() {
   LeftFreq = 40000000.00 / LeftPeriodCount;
-  return RightFreq;
+  return LeftFreq;
 }
 
 float RightFrequency() {
@@ -224,15 +223,15 @@ float RightFrequency() {
   return RightFreq;
 }
 
-float returnLeftRPM() {
-  LeftFreq = 40000000.00 / LeftPeriodCount;  // calculate frequency
-  LeftRPM = (LeftFreq * 6.0) / 49.0;
+float returnLeftRPM() 
+{
+  LeftRPM = (LeftFrequency() * 6.0) / 49.0;
   return LeftRPM;
 }
 
-float returnRightRPM() {
-  RightFreq = 40000000.00 / RightPeriodCount;  // calculate frequency
-  RightRPM = (RightFreq * 6.0) / 49.0;
+float returnRightRPM() 
+{
+  RightRPM = (RightFrequency() * 6.0) / 49.0;
   return RightRPM;
 }
 
