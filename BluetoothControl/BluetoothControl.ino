@@ -25,8 +25,8 @@
 #define currentMeter 35
 #define MotorENABLE 27
 
-#define pwmHz 1350  // PWM frequency of 1 KHz // test others
-#define pwmRes 8    // 8-bit resolution
+#define pwmHz 1350  // PWM frequency in Hz
+#define pwmRes 8    // PWM resolution
 
 /////////////////////////////////////////////////////////////////////////
 //                              PID                                    //
@@ -42,80 +42,75 @@ public:
   double ki;  // * (I)ntegral Tuning Parameter
   double kd;  // * (D)erivative Tuning Parameter
 
-  double* myInput;     // * Pointers to the Input, Output, and Setpoint variables
-  double* myOutput;    //   This creates a hard link between the variables and the
-  double* mySetpoint;  //   PID, freeing the user from having to constantly tell us
+  double* inputPointer;     // * Pointers to the Input, Output, and Setpoint variables
+  double* outputPointer;    //   This creates a hard link between the variables and the
+  double* setpointPointer;  //   PID, freeing the user from having to constantly tell us
 
   uint32_t lastTime;
-  double outputSum, lastInput;
+  double integralSum, lastInput;
 
   uint32_t SampleTime = 4;
   double outMin = -255;
   double outMax = 255;
-  bool inAuto;
+  bool Enabled;
 
 
-  PID(double* Input, double* Output, double* Setpoint, double Kp, double Ki, double Kd) {
-    myOutput = Output;
-    myInput = Input;
-    mySetpoint = Setpoint;
-    inAuto = false;
-    PID::SetTunings(Kp, Ki, Kd);
+  PID(double* Input, double* Output, double* Setpoint, double inKp, double inKi, double inKd) {
+    outputPointer = Output;
+    inputPointer = Input;
+    setpointPointer = Setpoint;
+    Enabled = false;
+    kp = inKp;
+    ki = inKi;
+    kd = inKd;
     lastTime = millis() - SampleTime;
   }
 
-  void enable(int Mode) {
-    bool newAuto = (Mode == 1);
-    if (newAuto && !inAuto) { /*we just went from manual to auto*/
-      outputSum = *myOutput;
-      lastInput = *myInput;
-      if (outputSum > outMax) outputSum = outMax;
-      else if (outputSum < outMin) outputSum = outMin;
+  void setEnable(int Mode) {
+    bool newMode = (Mode == 1);
+    if (newMode && !Enabled) { /*we just went from manual to auto*/
+      integralSum = *outputPointer;
+      lastInput = *inputPointer;
+      CheckLimits(integralSum);
     }
-    inAuto = newAuto;
+    Enabled = Mode;
   }
-  bool Compute()
-    {
-      if (!inAuto) return false;
-      uint32_t now = millis();
-      uint32_t timeChange = (now - lastTime);
-      if (timeChange >= SampleTime)
-      {
-        /*Compute all the working error variables*/
-        double input = *myInput;
-        double error = *mySetpoint - input;
-        double dInput = (input - lastInput);
-        outputSum += (ki * error);
+  bool Compute() {
+    if (!Enabled) return false;
+    uint32_t timeChange = (millis() - lastTime);
+    if (timeChange >= SampleTime) {
+      /*Compute all the working error variables*/
+      double deltaTime = (double)timeChange / 1000.0;
+      double input = *inputPointer;
+      double error = *setpointPointer - input;
+      double dInput = (input - lastInput);
+      double output;
 
-        if (outputSum > outMax) outputSum = outMax;
-        else if (outputSum < outMin) outputSum = outMin;
+      // P term
+      output = kp * error;
 
-        double output;
-        output = kp * error;
+      // I term
+      integralSum += (ki * deltaTime * error);
+      output += CheckLimits(integralSum);
 
-        /*Compute Rest of PID Output*/
-        output += outputSum - kd * dInput;
+      // D term
+      output -= (kd / deltaTime) * dInput;
+      output = CheckLimits(output);
+      *outputPointer = output;
 
-        if (output > outMax) output = outMax;
-        else if (output < outMin) output = outMin;
-        *myOutput = output;
-
-        /*Remember some variables for next time*/
-        lastInput = input;
-        lastTime = now;
-        return true;
-      }
-      else return false;
+      /*Remember some variables for next time*/
+      lastInput = input;
+      lastTime = millis();
+      return true;
+    } else return false;
+  }
+  double CheckLimits(double input) {
+    if (input > outMax) {
+      input = outMax;
+    } else if (input < outMin) {
+      input = outMin;
     }
-  void SetTunings(double Kp, double Ki, double Kd) {
-    double SampleTimeInSec = ((double)SampleTime) / 1000;
-    kp = Kp;
-    ki = Ki * SampleTimeInSec;
-    kd = Kd / SampleTimeInSec;
-  }
-  void SetOutputLimits(double Min, double Max) {
-    outMin = Min;
-    outMax = Max;
+    return input;
   }
 };
 PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
@@ -223,14 +218,12 @@ float RightFrequency() {
   return RightFreq;
 }
 
-float returnLeftRPM() 
-{
+float returnLeftRPM() {
   LeftRPM = (LeftFrequency() * 6.0) / 49.0;
   return LeftRPM;
 }
 
-float returnRightRPM() 
-{
+float returnRightRPM() {
   RightRPM = (RightFrequency() * 6.0) / 49.0;
   return RightRPM;
 }
@@ -240,8 +233,7 @@ uint16_t angleCalCutoff = 50;
 float linearOffset = 0;
 uint64_t linearCalTimer = 0;
 uint16_t linearCalInterval = 3000;
-float linearCalibration()
- {
+float linearCalibration() {
   // Linear Calibration
   if (linearOffset >= 5.0) {
     return linearOffset;
@@ -321,8 +313,7 @@ void dmpDataReady() {
   mpuInterrupt = true;
 }
 
-void printSerialDebug() 
-{
+void printSerialDebug() {
   Serial.print("Gyro: ");
   Serial.print(ypr[1] * 180 / M_PI);
   Serial.print("\t Accel:");
@@ -374,26 +365,21 @@ void readMPU() {
 
 bool fallFlag = false;
 
-void testForFall()
-{
+void testForFall() {
   // Robot is currently fallen
-  if (fallFlag == true)
-  {
+  if (fallFlag == true) {
     motorEnable(false);
     digitalWrite(LED_BUILTIN, HIGH);
     // Robot has been lifted up
-    if (abs(Input) <= 10) 
-    {
+    if (abs(Input) <= 10) {
       fallFlag = false;
     }
   }
   // Robot has not fallen
-  else 
-  {
+  else {
     motorEnable(true);
     // Robot just fell
-    if (abs(Input) >= 50.0)
-    {
+    if (abs(Input) >= 50.0) {
       fallFlag = true;
     }
   }
@@ -420,39 +406,39 @@ void LEDflash(uint16_t speed)  // Led flash in ms
 //////////////////////////////////////////////
 
 #ifdef BLUETOOTH_ENABLED
-// RemoteXY select connection mode and include library 
+// RemoteXY select connection mode and include library
 #define REMOTEXY_MODE__ESP32CORE_BLE
 #include <BLEDevice.h>
 
 #include <RemoteXY.h>
 
-// RemoteXY connection settings 
+// RemoteXY connection settings
 #define REMOTEXY_BLUETOOTH_NAME "SelfBalancingRobot"
 
 
-// RemoteXY configurate  
+// RemoteXY configurate
 #pragma pack(push, 1)
-uint8_t RemoteXY_CONF[] =   // 85 bytes
-  { 255,2,0,204,0,78,0,16,170,2,5,32,63,26,37,37,17,62,30,30,
-  2,26,31,71,56,250,24,58,58,5,1,54,54,0,2,24,75,0,0,180,
-  194,0,0,180,66,0,0,240,65,0,0,32,65,0,0,160,64,24,0,67,
-  4,0,3,100,6,2,39,60,8,2,26,100,67,4,0,10,100,6,0,3,
-  100,6,2,26,100 };
-  
-// this structure defines all the variables and events of your control interface 
+uint8_t RemoteXY_CONF[] =  // 85 bytes
+  { 255, 2, 0, 204, 0, 78, 0, 16, 170, 2, 5, 32, 63, 26, 37, 37, 17, 62, 30, 30,
+    2, 26, 31, 71, 56, 250, 24, 58, 58, 5, 1, 54, 54, 0, 2, 24, 75, 0, 0, 180,
+    194, 0, 0, 180, 66, 0, 0, 240, 65, 0, 0, 32, 65, 0, 0, 160, 64, 24, 0, 67,
+    4, 0, 3, 100, 6, 2, 39, 60, 8, 2, 26, 100, 67, 4, 0, 10, 100, 6, 0, 3,
+    100, 6, 2, 26, 100 };
+
+// this structure defines all the variables and events of your control interface
 struct {
 
-    // input variables
-  int8_t joystick_x; // from -100 to 100  
-  int8_t joystick_y; // from -100 to 100  
+  // input variables
+  int8_t joystick_x;  // from -100 to 100
+  int8_t joystick_y;  // from -100 to 100
 
-    // output variables
-  float Angle;  // from -90 to 90 
-  char textBox[100];  // string UTF8 end zero 
-  char textBox2[100];  // string UTF8 end zero 
+  // output variables
+  float Angle;         // from -90 to 90
+  char textBox[100];   // string UTF8 end zero
+  char textBox2[100];  // string UTF8 end zero
 
-    // other variable
-  uint8_t connect_flag;  // =1 if wire connected, else =0 
+  // other variable
+  uint8_t connect_flag;  // =1 if wire connected, else =0
 
 } RemoteXY;
 #pragma pack(pop)
@@ -469,31 +455,22 @@ void remoteControl() {
 
   remoteCtrlRight = (RemoteXY.joystick_y * 0.05)
                     + (-RemoteXY.joystick_x * 0.05);
-      
 }
 
 int8_t rotationDegrees = 0;
 int8_t targetAngle = 0;
-void turnToAngle(int8_t rotationDegreesInput)
-{
+void turnToAngle(int8_t rotationDegreesInput) {
   rotationDegrees += rotationDegreesInput;
   targetAngle = (ypr[0] * 180 / M_PI) + rotationDegrees;
 }
-void ExecuteTurn()
-{
-  if(Output >= 100 || Output <= -100 || rotationDegrees == 0)
-  {
+void ExecuteTurn() {
+  if (Output >= 100 || Output <= -100 || rotationDegrees == 0) {
     return;
-  }
-  else 
-  {
-    
-    
+  } else {
   }
 }
 
-void formatText()
-{
+void formatText() {
   char outputString[100];
   char stringBuffer[16];
   strcpy(outputString, "Gyro: ");
@@ -504,22 +481,22 @@ void formatText()
   // dtostrf(aaWorld.y, 3, 2, stringBuffer);
   // strcat(outputString, stringBuffer);
 
-  strcat(outputString," \tlinCal: ");
+  strcat(outputString, " \tlinCal: ");
   dtostrf(linearCalibration(), 3, 2, stringBuffer);
   strcat(outputString, stringBuffer);
 
   strcpy(RemoteXY.textBox, outputString);
 }
 
-#endif //BLUETOOTH_ENABLED
+#endif  //BLUETOOTH_ENABLED
 /////////////////////////////////////////////////////////////////////////
 //                          Setup & Loop                               //
 /////////////////////////////////////////////////////////////////////////
 
 void setup() {
-  #ifdef BLUETOOTH_ENABLED
+#ifdef BLUETOOTH_ENABLED
   RemoteXY_Init();
-  #endif //BLUETOOTH_ENABLED
+#endif  //BLUETOOTH_ENABLED
   Wire.begin();
   Wire.setClock(400000);  // 400kHz I2C clock. Comment this line if having compilation difficulties
   Serial.begin(115200);
@@ -536,8 +513,7 @@ void setup() {
   mpu.setZAccelOffset(1386);
 
   // make sure it worked (returns 0 if so)
-  if (devStatus == 0) 
-  {
+  if (devStatus == 0) {
     mpu.PrintActiveOffsets();
     // turn on the DMP, now that it's ready
     Serial.println(F("Enabling DMP..."));
@@ -583,7 +559,7 @@ void setup() {
   analogReadResolution(9);
   pinMode(MotorENABLE, OUTPUT);
 
-  balancePID.enable(1);
+  balancePID.setEnable(1);
   mpu.setDLPFMode(3);
 
   readMPU();
@@ -599,22 +575,21 @@ void setup() {
 
 void loop() {
 
-  #ifdef BLUETOOTH_ENABLED
+#ifdef BLUETOOTH_ENABLED
   RemoteXY_Handler();
   formatText();
   if (RemoteXY.connect_flag == 0)
     LEDflash(500);
   else LEDflash(0);
-  #endif //BLUETOOTH_ENABLED
-  
+#endif  //BLUETOOTH_ENABLED
+
   readMPU();
   printSerialDebug();
-  
+
   Setpoint = 0 + linearCalibration();
   balancePID.Compute();
   testForFall();
 
   leftMotor.rotate(Output);
   rightMotor.rotate(Output);
- 
 }
