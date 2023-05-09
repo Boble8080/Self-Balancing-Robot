@@ -31,10 +31,6 @@
 /////////////////////////////////////////////////////////////////////////
 //                              PID                                    //
 /////////////////////////////////////////////////////////////////////////
-double Setpoint = 0;
-double Input, Output;
-double Kp = 7.6, Ki = 0.1180, Kd = 0.15;
-
 class PID {
 public:
 
@@ -79,34 +75,43 @@ public:
   }
   bool Compute() {
     if (!Enabled) return false;
-    uint32_t timeChange = (millis() - lastTime);
+    uint32_t now = millis();
+    uint32_t timeChange = (now - lastTime);
     if (timeChange >= SampleTime) {
       /*Compute all the working error variables*/
       double input = *inputPointer;
       double error = *setpointPointer - input;
       double dInput = (input - lastInput);
-      double output;
+      integralSum += (ki * error);
 
-      // P term
+      CheckLimits(integralSum);
+
+      double output;
       output = kp * error;
 
-      // I term
-      integralSum += (ki * deltaTime * error);
-      output += CheckLimits(integralSum);
+      /*Compute Rest of PID Output*/
+      output += integralSum - kd * dInput;
 
-      // D term
-      output -= (kd / deltaTime) * dInput;
-      output = CheckLimits(output);
-      *outputPointer = output;
+      *outputPointer = CheckLimits(output);
 
       /*Remember some variables for next time*/
       lastInput = input;
-      lastTime = millis();
+      lastTime = now;
       return true;
     } else return false;
   }
+  void SetTunings(double Kp, double Ki, double Kd) {
+    double SampleTimeInSec = ((double)SampleTime) / 1000;
+    kp = Kp;
+    ki = Ki * SampleTimeInSec;
+    kd = Kd / SampleTimeInSec;
+  }
+  void SetOutputLimits(double Min, double Max) {
+    outMin = Min;
+    outMax = Max;
+  }
   double CheckLimits(double input) {
-    
+
     if (input > outMax) {
       input = outMax;
     } else if (input < outMin) {
@@ -115,9 +120,11 @@ public:
     return input;
   }
 };
+
+double Setpoint = 0;
+double Input, Output;
+double Kp = 7.6, Ki = 118.00, Kd = 0.15;
 PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
-
-
 
 /////////////////////////////////////////////////////////////////////////
 //                               Motor                                 //
@@ -251,14 +258,14 @@ float linearCalibration() {
     // and is positive
     if (LeftSteps > 0) {
       // increase offset and reset Steps
-      linearOffset += 0.05;
+      linearOffset += 0.1;
       LeftSteps -= RightSteps;
       RightSteps = 0;
     }
     // or is negative
     else {
       // decrease offset and reset Steps
-      linearOffset -= 0.05;
+      linearOffset -= 0.1;
       LeftSteps += RightSteps;
       RightSteps = 0;
     }
@@ -345,6 +352,33 @@ void debugGyro() {
   Serial.print(ypr[2] * 180 / M_PI);
 }
 
+void debugAccel() {
+  Serial.print(-1800);
+  Serial.print(" ");
+  Serial.print(1800);
+  Serial.print(" ");
+  Serial.print("aworld\t");
+  Serial.print(aaWorld.x);
+  Serial.print("\t");
+  Serial.print(aaWorld.y);
+  Serial.print("\t");
+  Serial.print(aaWorld.z);
+}
+
+void debugBoth() {
+  Serial.print("Acel: X: ");
+  Serial.print(aaWorld.x);
+  Serial.print("\t\tY: ");
+  Serial.print(aaWorld.y);
+  Serial.print("\t\tZ: ");
+  Serial.print(aaWorld.z);
+  Serial.print("\t\tGyro: Yaw: ");
+  Serial.print(ypr[0] * 180 / M_PI);
+  Serial.print("\tPch: ");
+  Serial.print(ypr[1] * 180 / M_PI);
+  Serial.print("\tRll: ");
+  Serial.print(ypr[2] * 180 / M_PI);
+}
 void readMPU() {
   if (!dmpReady) {
     LEDflash(2000);
@@ -362,8 +396,7 @@ void readMPU() {
     Input = -ypr[1] * 180 / M_PI;
     if (Input <= 0.1 && Input >= -0.1) {
       digitalWrite(LED_BUILTIN, HIGH);
-    }
-    else digitalWrite(LED_BUILTIN, LOW);
+    } else digitalWrite(LED_BUILTIN, LOW);
   }
 }
 
@@ -552,12 +585,12 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
 
   pinMode(Lencoder, INPUT);
-  attachInterrupt(Lencoder, handleLeftInterrupt, RISING);
+  attachInterrupt(Lencoder, handleLeftInterrupt, FALLING);
   LeftTimer = timerBegin(0, 2, true);
   timerStart(LeftTimer);
 
   pinMode(Rencoder, INPUT);
-  attachInterrupt(Rencoder, handleRightInterrupt, RISING);
+  attachInterrupt(Rencoder, handleRightInterrupt, FALLING);
   RightTimer = timerBegin(1, 2, true);
   timerStart(LeftTimer);
 
@@ -573,7 +606,7 @@ void setup() {
   while (Input >= 10 && Input <= 10) {
     readMPU();
     motorEnable(0);
-    LEDflash(300);
+    LEDflash(100);
   }
   motorEnable(1);
 }
@@ -590,7 +623,7 @@ void loop() {
 
   readMPU();
   Setpoint = 0 + linearCalibration();
-  if(!balancePID.Compute())printSerialDebug();
+  if (!balancePID.Compute()) printSerialDebug();
 
   testForFall();
 
