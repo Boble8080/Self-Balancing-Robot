@@ -33,7 +33,7 @@
 /////////////////////////////////////////////////////////////////////////
 double Setpoint = 0;
 double Input, Output;
-double Kp = 7.6, Ki = 0.1180, Kd = 0.15;
+double Kp = 7.6, Ki = 0.1180, Kd = 0.0;
 
 class PID {
 public:
@@ -120,7 +120,7 @@ PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
 double C_Setpoint = 0;
 double C_Input;
 double C_Output;
-double C_Kp = 0.01, C_Ki = 0.0001, C_Kd = 0.0001;
+double C_Kp = 0.01, C_Ki = 0.000, C_Kd = 0.9;
 
 PID CascadePID(&C_Input, &C_Output, &C_Setpoint, C_Kp, C_Ki, C_Kd);
 
@@ -180,6 +180,7 @@ void motorEnable(bool enable) {
 /////////////////////////////////////////////////////////////////////////
 //                          Encoder                                    //
 /////////////////////////////////////////////////////////////////////////
+#define INTERRUPTS_ENNABLED
 float distance = 0;
 int16_t debounce = 25000;
 
@@ -201,18 +202,21 @@ volatile int64_t RightSteps = 0;
 hw_timer_t* RightTimer = NULL;  // pointer to a variable of type hw_timer_t
 
 void IRAM_ATTR handleLeftInterrupt() {
+  #ifdef INTERRUPTS_ENNABLED
   uint64_t TempVal = timerRead(LeftTimer);     // value of timer at interrupt
   LeftPeriodCount = TempVal - LeftStartValue;  // period count between rising edges
-  if (LeftPeriodCount < debounce) return;
+  //if (LeftPeriodCount < debounce) return;
   LeftStartValue = TempVal;  // puts latest reading as start for next calculation
   if (Output > 0) LeftSteps++;
   else LeftSteps--;
+  #endif
 }
 
 void IRAM_ATTR handleRightInterrupt() {
+  #ifdef INTERRUPTS_ENNABLED
   uint64_t TempVal = timerRead(RightTimer);      // value of timer at interrupt
   RightPeriodCount = TempVal - RightStartValue;  // period count between rising edges
-  if (RightPeriodCount < debounce) return;
+  //if (RightPeriodCount < debounce) return;
   RightStartValue = TempVal;  // puts latest reading as start for next calculation
   if (Output > 0) {
     RightSteps++;
@@ -222,10 +226,11 @@ void IRAM_ATTR handleRightInterrupt() {
     RightSteps--;
     distance -= 0.0025;
   }
+  #endif
 }
 
 void ManageCascade() {
-  C_Input = (float)RightSteps * 0.01;
+  C_Input = (float)RightSteps * -0.01;
 }
 
 float LeftFrequency() {
@@ -334,25 +339,25 @@ void dmpDataReady() {
 }
 float remoteSetpoint = 0;
 void printSerialDebug() {
-  Serial.print(" ");
+  Serial.print("Deg: ");
   Serial.print(Input);
-  Serial.print("\t");
+  Serial.print("\tSp: ");
   Serial.print(Setpoint);
-  Serial.print("\t");
+  Serial.print("\tMtr: ");
   Serial.print(Output);
-  Serial.print("\t");
+  Serial.print("\tC_In: ");
   Serial.print(C_Input);
-  Serial.print("\t");
+  Serial.print("\tC_Out: ");
   Serial.print(C_Output);
-  Serial.print("\t");
+  Serial.print("\tDist: ");
   Serial.print(distance);
-  Serial.print("\t");
+  Serial.print("\tRstep: ");
   Serial.print(RightSteps);
-  Serial.print("\t");
+  Serial.print("\tRPM; ");
   Serial.print(returnRightRPM());
-  Serial.print("\t");
+  Serial.print("\tRem: ");
   Serial.print(remoteSetpoint);
-  Serial.print("\t");
+  Serial.print("\tP: ");
   Serial.print(RightPeriodCount);
   Serial.println();
 }
@@ -381,9 +386,9 @@ void readMPU() {
     mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
 
     Input = -ypr[1] * 180 / M_PI;
-    if (Input <= 0.1 && Input >= -0.1) {
-      digitalWrite(LED_BUILTIN, HIGH);
-    } else digitalWrite(LED_BUILTIN, LOW);
+    // if (Input <= 0.1 && Input >= -0.1) {
+    //   digitalWrite(LED_BUILTIN, HIGH);
+    // } else digitalWrite(LED_BUILTIN, LOW);
   }
 }
 
@@ -547,12 +552,21 @@ void setup() {
   Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
   devStatus = mpu.dmpInitialize();
-  mpu.setXGyroOffset(148);
-  mpu.setYGyroOffset(-102);
-  mpu.setZGyroOffset(4);
-  mpu.setXAccelOffset(-539);
-  mpu.setYAccelOffset(369);
-  mpu.setZAccelOffset(1386);
+  // mpu.setXGyroOffset(148);
+  // mpu.setYGyroOffset(-102);
+  // mpu.setZGyroOffset(4);
+  // mpu.setXAccelOffset(-539);
+  // mpu.setYAccelOffset(369);
+  // mpu.setZAccelOffset(1386);
+  mpu.setXGyroOffset(27);
+  mpu.setYGyroOffset(-52);
+  mpu.setZGyroOffset(90);
+  mpu.setXAccelOffset(1125);
+  mpu.setYAccelOffset(1427);
+  mpu.setZAccelOffset(1189);
+
+  mpu.setXGyroFIFOEnabled(0);
+  mpu.setZGyroFIFOEnabled(0);
 
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
@@ -604,21 +618,24 @@ void setup() {
 
   balancePID.setEnable(1);
   CascadePID.setEnable(1);
-  mpu.setDLPFMode(3);
+  mpu.setDLPFMode(4);
 
   CascadePID.SampleTime = 100;
-  CascadePID.outMin = -5.0;
-  CascadePID.outMax = 5.0;
+  CascadePID.outMin = -3.0;
+  CascadePID.outMax = 3.0;
 
   readMPU();
-  delay(2000);
+  //delay(2000);
   readMPU();
-  while (Input >= 10 && Input <= 10) {
+  //(abs(Input) <= 10) && 
+  while (millis() <= 2000) {
     readMPU();
     motorEnable(0);
     LEDflash(300);
+    Serial.println("Starting");
   }
   motorEnable(1);
+  Serial.println(millis());
 }
 
 void loop() {
