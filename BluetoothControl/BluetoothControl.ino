@@ -52,7 +52,7 @@ public:
 
   double deltaTime = (double)SampleTime;
 
-
+  // Constructor for the PID object, runs once at the start
   PID(double* Input, double* Output, double* Setpoint, double inKp, double inKi, double inKd) {
     outputPointer = Output;
     inputPointer = Input;
@@ -66,7 +66,7 @@ public:
 
   void setEnable(int Mode) {
     bool newMode = (Mode == 1);
-    if (newMode && !Enabled) { /*we just went from manual to auto*/
+    if (newMode && !Enabled) { 
       integralSum = *outputPointer;
       lastInput = *inputPointer;
       CheckLimits(integralSum);
@@ -110,8 +110,9 @@ public:
     outMin = Min;
     outMax = Max;
   }
-  double CheckLimits(double input) {
-
+  // Check if value is within the bounds of the pwm limits
+  double CheckLimits(double input) 
+  {
     if (input > outMax) {
       input = outMax;
     } else if (input < outMin) {
@@ -184,6 +185,9 @@ void motorEnable(bool enable) {
 //                          Encoder                                    //
 /////////////////////////////////////////////////////////////////////////
 
+// The encoder code had to be written out twice instead of using an 
+//object, as this was incompattible with the interrupt of the ESP
+
 const byte LeftEncoderInterrupt = Lencoder;  // Assign the interrupt pin
 volatile uint64_t LeftStartValue = 0;        // First interrupt value
 volatile uint64_t LeftPeriodCount;           // period in counts
@@ -205,7 +209,7 @@ void IRAM_ATTR handleLeftInterrupt() {
   uint64_t TempVal = timerRead(LeftTimer);     // value of timer at interrupt
   LeftPeriodCount = TempVal - LeftStartValue;  // period count between rising edges
   LeftStartValue = TempVal;                    // puts latest reading as start for next calculation
-  if (Output > 0) LeftSteps++;
+  if (Output > 0) LeftSteps++;                 // counting steps
   else LeftSteps--;
 }
 
@@ -213,12 +217,13 @@ void IRAM_ATTR handleRightInterrupt() {
   uint64_t TempVal = timerRead(RightTimer);      // value of timer at interrupt
   RightPeriodCount = TempVal - RightStartValue;  // period count between rising edges
   RightStartValue = TempVal;                     // puts latest reading as start for next calculation
-  if (Output > 0) RightSteps++;
+  if (Output > 0) RightSteps++;                  // counting steps
   else RightSteps--;
 }
 
+// The 
 float LeftFrequency() {
-  LeftFreq = 40000000.00 / LeftPeriodCount;
+  LeftFreq = 40000000.00 / LeftPeriodCount; 
   return LeftFreq;
 }
 
