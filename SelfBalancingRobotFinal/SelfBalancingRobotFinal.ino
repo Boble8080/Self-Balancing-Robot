@@ -117,15 +117,7 @@ public:
 };
 PID balancePID(&Input, &Output, &Setpoint, Kp, Ki, Kd);
 
-double C_Setpoint = 0;
-double C_Input;
-double C_Output;
-double C_Kp = 0.01, C_Ki = 0.0001, C_Kd = 0.0001;
 
-PID CascadePID(&C_Input, &C_Output, &C_Setpoint, C_Kp, C_Ki, C_Kd);
-
-CascadePID.outMin = -5.0;
-CascadePID.outMax = 5.0;
 
 /////////////////////////////////////////////////////////////////////////
 //                               Motor                                 //
@@ -429,7 +421,7 @@ void LEDflash(uint16_t speed)  // Led flash in ms
 //        RemoteXY include library          //
 //////////////////////////////////////////////
 
-#define BLUETOOTH_ENABLED_0
+#define BLUETOOTH_ENABLED
 
 
 
@@ -624,8 +616,7 @@ void loop() {
   readMPU(); // Reads Gyroscope
   
   // Adjust Setpoint
-  Setpoint = remoteSetpoint + C_Output;
-  CascadePID.Compute();
+  Setpoint = remoteSetpoint + linearCalibration();
   
   // Updates the PID and writes debug data to the serial monitor 
   //while the PID function is inactive.  

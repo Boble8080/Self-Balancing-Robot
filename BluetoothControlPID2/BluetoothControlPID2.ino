@@ -8,8 +8,8 @@
 #define MpuInterruptPin 23
 
 // Left motor pins
-#define Lmotor1 19
-#define Lmotor2 18
+#define Lmotor1 18
+#define Lmotor2 19
 #define LmotorEn 5
 #define LpwmChannel 0
 #define Lencoder 36
@@ -70,7 +70,7 @@ public:
 
   void setEnable(int Mode) {
     bool newMode = (Mode == 1);
-    if (newMode && !Enabled) { /*we just went from manual to auto*/
+    if (newMode && !Enabled) {
       integralSum = *outputPointer;
       lastInput = *inputPointer;
       CheckLimits(integralSum);
@@ -106,7 +106,7 @@ public:
     } else return false;
   }
   double CheckLimits(double input) {
-    
+
     if (input > outMax) {
       input = outMax;
     } else if (input < outMin) {
@@ -318,9 +318,8 @@ void dmpDataReady() {
 void printSerialDebug() {
   Serial.print("Gyro: ");
   Serial.print(Input);
-  Serial.print("\t Accel:");
-  Serial.print(aaWorld.y);
-  Serial.print("\t ");
+  Serial.print("\t Setpoint:");
+  Serial.print(Setpoint);
   Serial.print("\t Output: ");
   Serial.print(Output);
   Serial.print("\t linear: ");
@@ -331,7 +330,7 @@ void printSerialDebug() {
   Serial.print(RightSteps);
   Serial.print("\t RPM: ");
   Serial.print(returnLeftRPM());
-  Serial.print("\t time: ");
+  Serial.print("\t Ctrl: ");
   Serial.print(balancePID.deltaTime * 1000.0);
   Serial.println();
 }
@@ -362,31 +361,34 @@ void readMPU() {
     Input = -ypr[1] * 180 / M_PI;
     if (Input <= 0.1 && Input >= -0.1) {
       digitalWrite(LED_BUILTIN, HIGH);
-    }
-    else digitalWrite(LED_BUILTIN, LOW);
+    } else digitalWrite(LED_BUILTIN, LOW);
   }
 }
 
 bool fallFlag = false;
 
-void testForFall() {
+bool testForFall() {
   // Robot is currently fallen
   if (fallFlag == true) {
     motorEnable(false);
+    balancePID.setEnable(0);
     digitalWrite(LED_BUILTIN, HIGH);
     // Robot has been lifted up
     if (abs(Input) <= 10) {
       fallFlag = false;
       digitalWrite(LED_BUILTIN, LOW);
     }
+    return 1;
   }
   // Robot has not fallen
   else {
     motorEnable(true);
+    balancePID.setEnable(1);
     // Robot just fell
     if (abs(Input) >= 50.0) {
       fallFlag = true;
     }
+    return 0;
   }
 }
 /////////////////////////////////////////////////////////////////////////
@@ -410,6 +412,13 @@ void LEDflash(uint16_t speed)  // Led flash in ms
 //        RemoteXY include library          //
 //////////////////////////////////////////////
 
+#define BLUETOOTH_ENABLED
+
+float remoteSetpoint = 0;
+
+int8_t remoteCtrlLeft = 0;
+int8_t remoteCtrlRight = 0;
+
 #ifdef BLUETOOTH_ENABLED
 // RemoteXY select connection mode and include library
 #define REMOTEXY_MODE__ESP32CORE_BLE
@@ -424,11 +433,11 @@ void LEDflash(uint16_t speed)  // Led flash in ms
 // RemoteXY configurate
 #pragma pack(push, 1)
 uint8_t RemoteXY_CONF[] =  // 85 bytes
-  { 255, 2, 0, 204, 0, 78, 0, 16, 170, 2, 5, 32, 63, 26, 37, 37, 17, 62, 30, 30,
-    2, 26, 31, 71, 56, 250, 24, 58, 58, 5, 1, 54, 54, 0, 2, 24, 75, 0, 0, 180,
+  { 255, 2, 0, 204, 0, 78, 0, 16, 170, 2, 5, 32, 61, 13, 50, 50, 2, 46, 58, 58,
+    2, 26, 31, 71, 56, 244, 21, 61, 61, 4, 13, 54, 54, 0, 2, 24, 75, 0, 0, 180,
     194, 0, 0, 180, 66, 0, 0, 240, 65, 0, 0, 32, 65, 0, 0, 160, 64, 24, 0, 67,
-    4, 0, 3, 100, 6, 2, 39, 60, 8, 2, 26, 100, 67, 4, 0, 10, 100, 6, 0, 3,
-    100, 6, 2, 26, 100 };
+    4, 0, 0, 100, 6, 0, 7, 63, 7, 2, 26, 100, 67, 4, 0, 7, 100, 6, 0, 255,
+    63, 7, 2, 26, 100 };
 
 // this structure defines all the variables and events of your control interface
 struct {
@@ -448,32 +457,31 @@ struct {
 } RemoteXY;
 #pragma pack(pop)
 
-int8_t remoteCtrlLeft = 0;
-int8_t remoteCtrlRight = 0;
+
 
 void remoteControl() {
 
-  RemoteXY.Angle = Input;
+  RemoteXY.Angle = (float)Input;
 
-  remoteCtrlLeft = (RemoteXY.joystick_y * 0.05)
-                   + (RemoteXY.joystick_x * 0.05);
+  remoteSetpoint = (float)RemoteXY.joystick_y * -0.1;
 
-  remoteCtrlRight = (RemoteXY.joystick_y * 0.05)
-                    + (-RemoteXY.joystick_x * 0.05);
+  remoteCtrlLeft = (-RemoteXY.joystick_x * 0.5);
+  remoteCtrlRight = (RemoteXY.joystick_x * 0.5);
+
+  // If the remote control is being used, dont calibrate setpoint
+  if (abs(remoteSetpoint) > 0) {
+    RightSteps = 0;
+    LeftSteps = 0;
+  }
 }
 
 int8_t rotationDegrees = 0;
 int8_t targetAngle = 0;
 void turnToAngle(int8_t rotationDegreesInput) {
   rotationDegrees += rotationDegreesInput;
-  targetAngle = (ypr[0] * 180 / M_PI) + rotationDegrees;
+  targetAngle = (Input) + rotationDegrees;
 }
-void ExecuteTurn() {
-  if (Output >= 100 || Output <= -100 || rotationDegrees == 0) {
-    return;
-  } else {
-  }
-}
+
 
 void formatText() {
   char outputString[100];
@@ -482,15 +490,22 @@ void formatText() {
   dtostrf(Input, 3, 2, stringBuffer);
   strcat(outputString, stringBuffer);
 
-  // strcat(outputString," \tAcel: ");
-  // dtostrf(aaWorld.y, 3, 2, stringBuffer);
-  // strcat(outputString, stringBuffer);
-
   strcat(outputString, " \tlinCal: ");
   dtostrf(linearCalibration(), 3, 2, stringBuffer);
   strcat(outputString, stringBuffer);
 
   strcpy(RemoteXY.textBox, outputString);
+
+  // Second String
+  strcpy(outputString, "Setpoint: ");
+  dtostrf(Setpoint, 3, 2, stringBuffer);
+  strcat(outputString, stringBuffer);
+
+  strcat(outputString, " \tRPM: ");
+  dtostrf(returnLeftRPM(), 3, 2, stringBuffer);
+  strcat(outputString, stringBuffer);
+
+  strcpy(RemoteXY.textBox2, outputString);
 }
 
 #endif  //BLUETOOTH_ENABLED
@@ -582,6 +597,7 @@ void loop() {
 
 #ifdef BLUETOOTH_ENABLED
   RemoteXY_Handler();
+  remoteControl();
   formatText();
   if (RemoteXY.connect_flag == 0)
     LEDflash(500);
@@ -589,11 +605,11 @@ void loop() {
 #endif  //BLUETOOTH_ENABLED
 
   readMPU();
-  Setpoint = 0 + linearCalibration();
-  if(!balancePID.Compute())printSerialDebug();
+  Setpoint = remoteSetpoint + linearCalibration();
+  if (!balancePID.Compute()) printSerialDebug();
 
   testForFall();
 
-  leftMotor.rotate(Output);
-  rightMotor.rotate(Output);
+  leftMotor.rotate(Output + remoteCtrlLeft);
+  rightMotor.rotate(Output + remoteCtrlRight);
 }

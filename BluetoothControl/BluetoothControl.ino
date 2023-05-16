@@ -15,8 +15,8 @@
 #define Lencoder 36
 
 // Right motor pins
-#define Rmotor1 16
-#define Rmotor2 17
+#define Rmotor1 17
+#define Rmotor2 16
 #define RmotorEn 4
 #define RpwmChannel 1
 #define Rencoder 39
@@ -110,9 +110,14 @@ public:
     outMin = Min;
     outMax = Max;
   }
+<<<<<<< Updated upstream
   // Check if value is within the bounds of the pwm limits
   double CheckLimits(double input) 
   {
+=======
+  double CheckLimits(double input) {
+    return input;
+>>>>>>> Stashed changes
     if (input > outMax) {
       input = outMax;
     } else if (input < outMin) {
@@ -425,7 +430,9 @@ void testForFall() {
     if (abs(Input) >= 50.0) {
       fallFlag = true;
     }
+    
   }
+
 }
 /////////////////////////////////////////////////////////////////////////
 //                               LED                                   //
